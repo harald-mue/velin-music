@@ -53,6 +53,7 @@ data class PlaybackUiState(
     val hasNext: Boolean = false,
     val queue: List<PlaybackQueueItem> = emptyList(),
     val canEditQueue: Boolean = false,
+    val canReorderQueue: Boolean = false,
     val shuffleEnabled: Boolean = false,
     val repeatMode: PlaybackRepeatMode = PlaybackRepeatMode.Off,
     val error: String? = null,
@@ -117,6 +118,21 @@ class PlaybackViewModel(
 
     fun play(track: Track) {
         playQueue(listOf(track), 0)
+    }
+
+    fun enqueueTrack(track: Track, playNext: Boolean) {
+        val item = try {
+            mediaItemFactory.create(track)
+        } catch (_: IllegalArgumentException) {
+            mutableState.value = mutableState.value.copy(error = "This track cannot be played.")
+            return
+        }
+        val currentController = controller
+        if (currentController == null) {
+            pendingQueue = PendingQueue(listOf(item), 0)
+            return
+        }
+        enqueueItems(currentController, listOf(item), playNext)
     }
 
     fun playQueue(tracks: List<Track>, startIndex: Int) {
@@ -194,6 +210,18 @@ class PlaybackViewModel(
         }
     }
 
+    fun moveQueueItem(fromIndex: Int, toIndex: Int) {
+        controller?.let { currentController ->
+            if (currentController.shuffleModeEnabled ||
+                !currentController.isCommandAvailable(Player.COMMAND_CHANGE_MEDIA_ITEMS) ||
+                !isValidQueueMove(fromIndex, toIndex, currentController.mediaItemCount)
+            ) {
+                return
+            }
+            currentController.moveMediaItem(fromIndex, toIndex)
+        }
+    }
+
     fun toggleShuffle() {
         controller?.let { currentController ->
             if (currentController.isCommandAvailable(Player.COMMAND_SET_SHUFFLE_MODE)) {
@@ -236,6 +264,27 @@ class PlaybackViewModel(
         controller.setMediaItems(items, startIndex, 0)
         controller.prepare()
         controller.play()
+        updateState(controller)
+    }
+
+    private fun enqueueItems(controller: MediaController, items: List<MediaItem>, playNext: Boolean) {
+        if (items.isEmpty()) return
+        if (!controller.isCommandAvailable(Player.COMMAND_CHANGE_MEDIA_ITEMS)) return
+        mutableState.value = mutableState.value.copy(error = null)
+        if (controller.mediaItemCount == 0) {
+            startQueue(controller, items, 0)
+            return
+        }
+        if (!canEnqueue(controller.mediaItemCount, items.size)) {
+            mutableState.value = mutableState.value.copy(error = "The playback queue is full.")
+            return
+        }
+        val index = if (playNext) {
+            controller.currentMediaItemIndex + 1
+        } else {
+            controller.mediaItemCount
+        }
+        controller.addMediaItems(index, items)
         updateState(controller)
     }
 
@@ -283,6 +332,11 @@ class PlaybackViewModel(
             hasNext = player.hasNextMediaItem(),
             queue = queue,
             canEditQueue = queue.size > 1 && player.isCommandAvailable(Player.COMMAND_CHANGE_MEDIA_ITEMS),
+            canReorderQueue = canReorderQueue(
+                queueSize = queue.size,
+                shuffleEnabled = player.shuffleModeEnabled,
+                canEditQueue = queue.size > 1 && player.isCommandAvailable(Player.COMMAND_CHANGE_MEDIA_ITEMS),
+            ),
             shuffleEnabled = player.shuffleModeEnabled,
             repeatMode = when (player.repeatMode) {
                 Player.REPEAT_MODE_ALL -> PlaybackRepeatMode.All
@@ -325,6 +379,22 @@ class PlaybackViewModel(
 
 internal fun isValidPlaybackQueue(queueSize: Int, startIndex: Int): Boolean =
     queueSize in 1..500 && startIndex in 0 until queueSize
+
+internal fun canEnqueue(currentSize: Int, addCount: Int): Boolean =
+    addCount > 0 && currentSize + addCount <= 500
+
+internal fun canReorderQueue(
+    queueSize: Int,
+    shuffleEnabled: Boolean,
+    canEditQueue: Boolean,
+): Boolean = canEditQueue && queueSize > 1 && !shuffleEnabled
+
+internal fun isValidQueueMove(fromIndex: Int, toIndex: Int, queueSize: Int): Boolean {
+    if (queueSize <= 1) return false
+    if (fromIndex !in 0 until queueSize) return false
+    if (toIndex !in 0 until queueSize) return false
+    return fromIndex != toIndex
+}
 
 class PlaybackViewModelFactory(
     private val context: Context,

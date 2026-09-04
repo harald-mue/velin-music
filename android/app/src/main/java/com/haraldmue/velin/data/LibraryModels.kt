@@ -31,8 +31,46 @@ data class Track(
     val durationMs: Long?,
     val trackNumber: Int? = null,
     val discNumber: Int? = null,
+    val artistId: String? = null,
+    val albumId: String? = null,
     val coverId: String? = null,
 )
+
+data class TrackDetail(
+    val id: String,
+    val title: String,
+    val format: String,
+    val artistId: String?,
+    val artistName: String?,
+    val albumId: String?,
+    val albumTitle: String?,
+    val albumArtistName: String?,
+    val genre: String?,
+    val dateText: String?,
+    val trackNumber: Int?,
+    val totalTracks: Int?,
+    val discNumber: Int?,
+    val totalDiscs: Int?,
+    val durationMs: Long?,
+    val sampleRate: Int?,
+    val bitsPerSample: Int?,
+    val channels: Int?,
+    val coverId: String?,
+) {
+    fun toTrack(): Track = Track(
+        id = id,
+        title = title,
+        format = format,
+        artistName = artistName,
+        albumTitle = albumTitle,
+        durationMs = durationMs,
+        trackNumber = trackNumber,
+        discNumber = discNumber,
+        artistId = artistId,
+        albumId = albumId,
+        coverId = coverId,
+    )
+}
 
 data class Page<T>(
     val items: List<T>,
@@ -40,8 +78,30 @@ data class Page<T>(
     val hasMore: Boolean,
 )
 
+data class AccumulatedPage<T>(
+    val items: List<T> = emptyList(),
+    val nextCursor: String? = null,
+    val hasMore: Boolean = false,
+    val loadingMore: Boolean = false,
+) {
+    fun append(page: Page<T>): AccumulatedPage<T> = copy(
+        items = items + page.items,
+        nextCursor = page.nextCursor,
+        hasMore = page.hasMore,
+        loadingMore = false,
+    )
+
+    companion object {
+        fun <T> from(page: Page<T>): AccumulatedPage<T> = AccumulatedPage(
+            items = page.items,
+            nextCursor = page.nextCursor,
+            hasMore = page.hasMore,
+        )
+    }
+}
+
 data class LibrarySnapshot(
-    val artists: Page<Artist>,
-    val albums: Page<Album>,
-    val tracks: Page<Track>,
+    val artists: AccumulatedPage<Artist>,
+    val albums: AccumulatedPage<Album>,
+    val tracks: AccumulatedPage<Track>,
 )

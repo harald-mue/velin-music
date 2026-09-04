@@ -1,11 +1,14 @@
 package com.haraldmue.velin.playback
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -16,13 +19,22 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.haraldmue.velin.data.ArtworkClient
 import com.haraldmue.velin.ui.ArtworkImage
+import kotlin.math.roundToInt
 
 @Composable
 fun PlaybackQueueScreen(
@@ -30,12 +42,13 @@ fun PlaybackQueueScreen(
     artworkClient: ArtworkClient,
     onSelect: (Int) -> Unit,
     onRemove: (Int) -> Unit,
+    onMove: (Int, Int) -> Unit,
     onToggleShuffle: () -> Unit,
     onCycleRepeat: () -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(20.dp),
+        contentPadding = PaddingValues(20.dp),
     ) {
         item {
             Text("Playback queue", style = MaterialTheme.typography.headlineMedium)
@@ -44,6 +57,25 @@ fun PlaybackQueueScreen(
                 modifier = Modifier.padding(top = 4.dp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (state.queue.size > 1 && !state.canReorderQueue) {
+                Text(
+                    text = if (state.shuffleEnabled) {
+                        "Turn off shuffle to reorder the queue."
+                    } else {
+                        "Queue reordering is unavailable."
+                    },
+                    modifier = Modifier.padding(top = 8.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else if (state.canReorderQueue) {
+                Text(
+                    text = "Long-press a track and drag to reorder.",
+                    modifier = Modifier.padding(top = 8.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Row(
                 modifier = Modifier.padding(vertical = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -74,50 +106,122 @@ fun PlaybackQueueScreen(
                 items = state.queue,
                 key = { index, item -> "$index-${item.mediaId}" },
             ) { index, item ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onSelect(index) }
-                        .padding(vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    ArtworkImage(
-                        artworkClient = artworkClient,
-                        artworkUrl = item.artworkUrl,
-                        modifier = Modifier.size(48.dp),
-                    )
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = item.title,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            fontWeight = if (index == state.queueIndex) FontWeight.Bold else FontWeight.Normal,
-                            color = if (index == state.queueIndex) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurface
-                            },
-                        )
-                        item.artist?.takeIf(String::isNotEmpty)?.let { artist ->
-                            Text(
-                                text = artist,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                    TextButton(
-                        onClick = { onRemove(index) },
-                        enabled = state.canEditQueue,
-                    ) {
-                        Text("Remove")
-                    }
-                }
+                ReorderableQueueRow(
+                    index = index,
+                    lastIndex = state.queue.lastIndex,
+                    item = item,
+                    isCurrent = index == state.queueIndex,
+                    canReorder = state.canReorderQueue,
+                    canRemove = state.canEditQueue,
+                    artworkClient = artworkClient,
+                    onSelect = { onSelect(index) },
+                    onRemove = { onRemove(index) },
+                    onMove = onMove,
+                )
                 HorizontalDivider()
             }
+        }
+    }
+}
+
+@Composable
+private fun ReorderableQueueRow(
+    index: Int,
+    lastIndex: Int,
+    item: PlaybackQueueItem,
+    isCurrent: Boolean,
+    canReorder: Boolean,
+    canRemove: Boolean,
+    artworkClient: ArtworkClient,
+    onSelect: () -> Unit,
+    onRemove: () -> Unit,
+    onMove: (Int, Int) -> Unit,
+) {
+    val rowHeightPx = with(LocalDensity.current) { 72.dp.toPx() }
+    var dragOffsetY by remember(index) { mutableFloatStateOf(0f) }
+    var dragging by remember(index) { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .offset { IntOffset(0, if (dragging) dragOffsetY.roundToInt() else 0) }
+            .then(
+                if (canReorder) {
+                    Modifier.pointerInput(index, lastIndex) {
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = {
+                                dragging = true
+                                dragOffsetY = 0f
+                            },
+                            onDragEnd = {
+                                val targetIndex = (index + (dragOffsetY / rowHeightPx).roundToInt())
+                                    .coerceIn(0, lastIndex)
+                                if (targetIndex != index) {
+                                    onMove(index, targetIndex)
+                                }
+                                dragOffsetY = 0f
+                                dragging = false
+                            },
+                            onDragCancel = {
+                                dragOffsetY = 0f
+                                dragging = false
+                            },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                dragOffsetY += dragAmount.y
+                            },
+                        )
+                    }
+                } else {
+                    Modifier
+                },
+            )
+            .clickable(enabled = !dragging, onClick = onSelect)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(
+            text = "≡",
+            modifier = Modifier.padding(end = 4.dp),
+            color = if (canReorder) {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+            },
+        )
+        ArtworkImage(
+            artworkClient = artworkClient,
+            artworkUrl = item.artworkUrl,
+            modifier = Modifier.size(48.dp),
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = item.title,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                color = if (isCurrent) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+            )
+            item.artist?.takeIf(String::isNotEmpty)?.let { artist ->
+                Text(
+                    text = artist,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        TextButton(
+            onClick = onRemove,
+            enabled = canRemove,
+        ) {
+            Text("Remove")
         }
     }
 }

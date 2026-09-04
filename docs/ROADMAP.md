@@ -66,7 +66,7 @@ Authentication precedes protected library, artwork, and streaming endpoints so n
 
 ## M9 — Android library UX — **active**
 
-- **Partial:** home, artists, albums, tracks, and search load their first authenticated pages; album detail with bounded cursor-following track loading is complete, while general pagination and artist/track details remain
+- **Partial:** home, artists, albums, tracks, and search load their first authenticated pages with cursor-based load-more; album, artist, and track detail screens are complete
 - **Complete:** authenticated artwork in album/track rows, mini-player, Now Playing, and MediaSession metadata
 - **Complete:** loading, empty, and recoverable-error states for initial pages
 
@@ -79,8 +79,8 @@ Authentication precedes protected library, artwork, and streaming endpoints so n
 - **Complete:** bounded visible-list/search queues with selected start index, automatic advance, queue position, and previous/next controls
 - **Complete:** authenticated token-free artwork metadata with redirect-safe Coil and Media3 loaders
 - **Complete:** album-specific queues in disc/track order, loaded across bounded cursor pages
-- **Complete:** Media3-backed queue display, direct selection, safe item removal, shuffle, and repeat Off/All/One
-- **Planned:** queue reordering and explicit “play next”/“add to queue” actions
+- **Complete:** Media3-backed queue display, direct selection, safe item removal, long-press drag reorder (shuffle off), shuffle, repeat Off/All/One, and track-detail Play next / Add to queue
+- **Complete:** extended ExoPlayer buffering (2–5 minute window) and longer OkHttp read timeouts for LAN streams
 - **Partial:** seeking is complete; lock-screen, Bluetooth, headset controls, and long-running background behavior require broader device validation
 - **Complete:** authorization headers for original FLAC/MP3 streams
 

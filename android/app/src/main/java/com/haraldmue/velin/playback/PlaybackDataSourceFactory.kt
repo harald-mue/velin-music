@@ -37,7 +37,7 @@ class PlaybackDataSourceFactory(
             .followRedirects(false)
             .followSslRedirects(false)
             .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(120, TimeUnit.SECONDS)
             .callTimeout(0, TimeUnit.MILLISECONDS)
             .build()
     }

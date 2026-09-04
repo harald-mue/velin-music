@@ -123,6 +123,68 @@ class VelinApiClientTest {
     }
 
     @Test
+    fun artistsPageUsesCursor() = runTest {
+        MockWebServer().use { server ->
+            server.enqueue(
+                MockResponse().setBody(
+                    """{"items":[{"id":"artist-1","name":"One","album_count":1,"track_count":1}],"has_more":true,"next_cursor":"page-2"}""",
+                ),
+            )
+            server.enqueue(
+                MockResponse().setBody(
+                    """{"items":[{"id":"artist-2","name":"Two","album_count":0,"track_count":2}],"has_more":false}""",
+                ),
+            )
+            val client = VelinApiClient(credentials(server))
+
+            val first = client.loadArtistsPage()
+            val second = client.loadArtistsPage(first.nextCursor)
+
+            assertEquals("One", first.items.single().name)
+            assertTrue(first.hasMore)
+            assertEquals("Two", second.items.single().name)
+            assertFalse(second.hasMore)
+            assertEquals(null, server.takeRequest().requestUrl?.queryParameter("cursor"))
+            assertEquals("page-2", server.takeRequest().requestUrl?.queryParameter("cursor"))
+        }
+    }
+
+    @Test
+    fun loadTrackParsesDetailMetadata() = runTest {
+        MockWebServer().use { server ->
+            server.enqueue(
+                MockResponse().setBody(
+                    """{
+                        "id":"track-1",
+                        "title":"Song",
+                        "format":"flac",
+                        "artist_id":"artist-1",
+                        "artist_name":"Artist",
+                        "album_id":"album-1",
+                        "album_title":"Album",
+                        "genre":"Rock",
+                        "duration_ms":180000,
+                        "sample_rate":44100,
+                        "bits_per_sample":16,
+                        "channels":2
+                    }""".trimIndent(),
+                ),
+            )
+            val client = VelinApiClient(credentials(server))
+
+            val track = client.loadTrack("track-1")
+
+            assertEquals("Song", track.title)
+            assertEquals("flac", track.format)
+            assertEquals("artist-1", track.artistId)
+            assertEquals("album-1", track.albumId)
+            assertEquals("Rock", track.genre)
+            assertEquals(44100, track.sampleRate)
+            assertEquals("/api/v1/tracks/track-1", server.takeRequest().path)
+        }
+    }
+
+    @Test
     fun unauthorizedResponseIsMarkedAsAuthenticationFailure() = runTest {
         MockWebServer().use { server ->
             server.enqueue(MockResponse().setResponseCode(401).setBody("{}"))

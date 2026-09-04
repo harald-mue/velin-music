@@ -20,6 +20,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -30,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import com.haraldmue.velin.data.AccumulatedPage
 import com.haraldmue.velin.data.Album
 import com.haraldmue.velin.data.ArtworkClient
 import com.haraldmue.velin.data.Artist
@@ -93,7 +95,7 @@ fun HomeScreen(
     }
 }
 
-private enum class LibrarySection(val label: String) {
+private enum class LibraryTab(val label: String) {
     Albums("Albums"),
     Artists("Artists"),
     Tracks("Tracks"),
@@ -105,7 +107,10 @@ fun LibraryScreen(
     artworkClient: ArtworkClient,
     currentTrackId: String?,
     onAlbumClick: (Album) -> Unit,
+    onArtistClick: (Artist) -> Unit,
     onTrackClick: (List<Track>, Int) -> Unit,
+    onTrackDetail: (String) -> Unit,
+    onLoadMore: (LibrarySection) -> Unit,
     onRetry: () -> Unit,
     onPairAgain: () -> Unit,
 ) {
@@ -118,7 +123,7 @@ fun LibraryScreen(
         )
         else -> {
             val library = state.library ?: return
-            var section by remember { mutableStateOf(LibrarySection.Albums) }
+            var section by remember { mutableStateOf(LibraryTab.Albums) }
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(24.dp),
@@ -129,7 +134,7 @@ fun LibraryScreen(
                         modifier = Modifier.padding(vertical = 20.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        LibrarySection.entries.forEach { item ->
+                        LibraryTab.entries.forEach { item ->
                             FilterChip(
                                 selected = section == item,
                                 onClick = { section = item },
@@ -139,33 +144,40 @@ fun LibraryScreen(
                     }
                 }
                 when (section) {
-                    LibrarySection.Albums -> items(library.albums.items, key = { it.id }) { album ->
-                        AlbumRow(album, artworkClient, onClick = { onAlbumClick(album) })
-                    }
-                    LibrarySection.Artists -> items(library.artists.items, key = { it.id }) { ArtistRow(it) }
-                    LibrarySection.Tracks -> itemsIndexed(
-                        items = library.tracks.items,
-                        key = { _, track -> track.id },
-                    ) { index, track ->
-                        TrackRow(
-                            track = track,
-                            artworkClient = artworkClient,
-                            isCurrent = track.id == currentTrackId,
-                            onClick = { onTrackClick(library.tracks.items, index) },
+                    LibraryTab.Albums -> {
+                        items(library.albums.items, key = { it.id }) { album ->
+                            AlbumRow(album, artworkClient, onClick = { onAlbumClick(album) })
+                        }
+                        loadMoreItem(
+                            page = library.albums,
+                            onLoadMore = { onLoadMore(LibrarySection.Albums) },
                         )
                     }
-                }
-                val hasMore = when (section) {
-                    LibrarySection.Albums -> library.albums.hasMore
-                    LibrarySection.Artists -> library.artists.hasMore
-                    LibrarySection.Tracks -> library.tracks.hasMore
-                }
-                if (hasMore) {
-                    item {
-                        Text(
-                            "Showing the first 50 items. Pagination will be added next.",
-                            modifier = Modifier.padding(top = 16.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    LibraryTab.Artists -> {
+                        items(library.artists.items, key = { it.id }) { artist ->
+                            ArtistRow(artist, onClick = { onArtistClick(artist) })
+                        }
+                        loadMoreItem(
+                            page = library.artists,
+                            onLoadMore = { onLoadMore(LibrarySection.Artists) },
+                        )
+                    }
+                    LibraryTab.Tracks -> {
+                        itemsIndexed(
+                            items = library.tracks.items,
+                            key = { _, track -> track.id },
+                        ) { index, track ->
+                            TrackRow(
+                                track = track,
+                                artworkClient = artworkClient,
+                                isCurrent = track.id == currentTrackId,
+                                onClick = { onTrackClick(library.tracks.items, index) },
+                                onDetailClick = { onTrackDetail(track.id) },
+                            )
+                        }
+                        loadMoreItem(
+                            page = library.tracks,
+                            onLoadMore = { onLoadMore(LibrarySection.Tracks) },
                         )
                     }
                 }
@@ -181,6 +193,8 @@ fun SearchScreen(
     currentTrackId: String?,
     onSearch: (String) -> Unit,
     onTrackClick: (List<Track>, Int) -> Unit,
+    onTrackDetail: (String) -> Unit,
+    onLoadMoreSearch: () -> Unit,
     onPairAgain: () -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
@@ -242,15 +256,247 @@ fun SearchScreen(
                         artworkClient = artworkClient,
                         isCurrent = track.id == currentTrackId,
                         onClick = { onTrackClick(state.searchResults.items, index) },
+                        onDetailClick = { onTrackDetail(track.id) },
                     )
                 }
-                if (state.searchResults.hasMore) {
-                    item {
-                        Text(
-                            "More matches are available.",
-                            modifier = Modifier.padding(vertical = 16.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                loadMoreItem(
+                    page = state.searchResults,
+                    onLoadMore = onLoadMoreSearch,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ArtistDetailScreen(
+    artist: Artist,
+    state: LibraryUiState,
+    artworkClient: ArtworkClient,
+    currentTrackId: String?,
+    onPlayQueue: (List<Track>, Int) -> Unit,
+    onRetry: () -> Unit,
+    onPairAgain: () -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(24.dp),
+    ) {
+        item {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = artist.name,
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "${artist.albumCount} albums · ${artist.trackCount} tracks",
+                    modifier = Modifier.padding(top = 8.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Button(
+                    onClick = { onPlayQueue(state.artistTracks, 0) },
+                    modifier = Modifier.padding(vertical = 20.dp),
+                    enabled = state.artistTracks.isNotEmpty() && !state.artistLoading,
+                ) {
+                    Text("Play artist")
+                }
+            }
+        }
+        when {
+            state.artistLoading -> item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 24.dp),
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    CircularProgressIndicator()
+                }
+            }
+            state.artistError != null -> item {
+                ErrorContent(
+                    message = state.artistError,
+                    actionLabel = if (state.authenticationFailed) "Pair again" else "Retry",
+                    onAction = if (state.authenticationFailed) onPairAgain else onRetry,
+                )
+            }
+            state.artistTracks.isEmpty() -> item {
+                Text(
+                    text = "This artist has no indexed tracks.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            else -> itemsIndexed(
+                items = state.artistTracks,
+                key = { _, track -> track.id },
+            ) { index, track ->
+                TrackRow(
+                    track = track,
+                    artworkClient = artworkClient,
+                    isCurrent = track.id == currentTrackId,
+                    onClick = { onPlayQueue(state.artistTracks, index) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun TrackDetailScreen(
+    state: LibraryUiState,
+    artworkClient: ArtworkClient,
+    currentTrackId: String?,
+    onPlay: (Track) -> Unit,
+    onPlayNext: (Track) -> Unit,
+    onAddToQueue: (Track) -> Unit,
+    onOpenAlbum: (Album) -> Unit,
+    onOpenArtist: (Artist) -> Unit,
+    onRetry: () -> Unit,
+    onPairAgain: () -> Unit,
+) {
+    when {
+        state.trackLoading -> LoadingScreen()
+        state.trackError != null -> ErrorScreen(
+            message = state.trackError,
+            actionLabel = if (state.authenticationFailed) "Pair again" else "Retry",
+            onAction = if (state.authenticationFailed) onPairAgain else onRetry,
+        )
+        else -> {
+            val track = state.trackDetail ?: return
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(24.dp),
+            ) {
+                item {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                        ArtworkImage(
+                            artworkClient = artworkClient,
+                            artworkUrl = artworkClient.urlFor(track.coverId),
+                            modifier = Modifier.size(180.dp),
                         )
+                        Text(
+                            text = track.title,
+                            modifier = Modifier.padding(top = 20.dp),
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        )
+                        track.artistName?.let { artistName ->
+                            Text(
+                                text = artistName,
+                                modifier = Modifier
+                                    .padding(top = 8.dp)
+                                    .clickable(enabled = track.artistId != null) {
+                                        track.artistId?.let { artistId ->
+                                            onOpenArtist(
+                                                Artist(
+                                                    id = artistId,
+                                                    name = artistName,
+                                                    albumCount = 0,
+                                                    trackCount = 0,
+                                                ),
+                                            )
+                                        }
+                                    },
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                        track.albumTitle?.let { albumTitle ->
+                            Text(
+                                text = albumTitle,
+                                modifier = Modifier
+                                    .padding(top = 4.dp)
+                                    .clickable(enabled = track.albumId != null) {
+                                        track.albumId?.let { albumId ->
+                                            onOpenAlbum(
+                                                Album(
+                                                    id = albumId,
+                                                    title = albumTitle,
+                                                    artistName = track.albumArtistName ?: track.artistName,
+                                                    year = null,
+                                                    coverId = track.coverId,
+                                                    trackCount = track.totalTracks ?: 0,
+                                                ),
+                                            )
+                                        }
+                                    },
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 20.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                        ) {
+                            Button(onClick = { onPlay(track.toTrack()) }) {
+                                Text(if (track.id == currentTrackId) "Play again" else "Play")
+                            }
+                            TextButton(onClick = { onPlayNext(track.toTrack()) }) {
+                                Text("Play next")
+                            }
+                            TextButton(onClick = { onAddToQueue(track.toTrack()) }) {
+                                Text("Add to queue")
+                            }
+                        }
+                    }
+                }
+                item {
+                    DetailSection("Format", track.format.uppercase())
+                    track.durationMs?.let { DetailSection("Duration", formatDuration(it)) }
+                    track.genre?.takeIf(String::isNotEmpty)?.let { DetailSection("Genre", it) }
+                    track.dateText?.takeIf(String::isNotEmpty)?.let { DetailSection("Date", it) }
+                    val position = listOfNotNull(
+                        track.discNumber?.let { "Disc $it" },
+                        track.trackNumber?.let { number ->
+                            track.totalTracks?.let { total -> "Track $number of $total" } ?: "Track $number"
+                        },
+                    ).joinToString(" · ")
+                    if (position.isNotEmpty()) DetailSection("Position", position)
+                    val technical = listOfNotNull(
+                        track.sampleRate?.let { "$it Hz" },
+                        track.bitsPerSample?.let { "$it-bit" },
+                        track.channels?.let { channels ->
+                            when (channels) {
+                                1 -> "Mono"
+                                2 -> "Stereo"
+                                else -> "$channels channels"
+                            }
+                        },
+                    ).joinToString(" · ")
+                    if (technical.isNotEmpty()) DetailSection("Technical", technical)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailSection(label: String, value: String) {
+    Column(modifier = Modifier.padding(bottom = 12.dp)) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
+private fun androidx.compose.foundation.lazy.LazyListScope.loadMoreItem(
+    page: AccumulatedPage<*>,
+    onLoadMore: () -> Unit,
+) {
+    if (page.hasMore || page.loadingMore) {
+        item(key = "load-more") {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 16.dp),
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                if (page.loadingMore) {
+                    CircularProgressIndicator()
+                } else {
+                    Button(onClick = onLoadMore) {
+                        Text("Load more")
                     }
                 }
             }
@@ -396,11 +642,12 @@ private fun AlbumRow(
 }
 
 @Composable
-private fun ArtistRow(artist: Artist) {
+private fun ArtistRow(artist: Artist, onClick: (() -> Unit)? = null) {
     ItemRow(
         title = artist.name,
         subtitle = "${artist.albumCount} albums",
         detail = "${artist.trackCount} tracks",
+        onClick = onClick,
     )
 }
 
@@ -411,6 +658,7 @@ private fun TrackRow(
     isCurrent: Boolean = false,
     showPosition: Boolean = false,
     onClick: (() -> Unit)? = null,
+    onDetailClick: (() -> Unit)? = null,
 ) {
     val technicalDetail = listOfNotNull(
         track.format.uppercase(),
@@ -428,6 +676,13 @@ private fun TrackRow(
         subtitle = listOfNotNull(track.artistName, track.albumTitle).joinToString(" · "),
         detail = if (isCurrent) "Now playing · $technicalDetail" else technicalDetail,
         onClick = onClick,
+        trailing = onDetailClick?.let { detailClick ->
+            {
+                TextButton(onClick = detailClick) {
+                    Text("Info")
+                }
+            }
+        },
     )
 }
 
@@ -439,6 +694,7 @@ private fun ItemRow(
     artworkClient: ArtworkClient? = null,
     artworkUrl: String? = null,
     onClick: (() -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val interactionModifier = if (onClick == null) Modifier else Modifier.clickable(onClick = onClick)
     Row(
@@ -470,6 +726,7 @@ private fun ItemRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        trailing?.invoke()
     }
     HorizontalDivider()
 }

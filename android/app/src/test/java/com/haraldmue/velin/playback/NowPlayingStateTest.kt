@@ -22,6 +22,29 @@ class NowPlayingStateTest {
     }
 
     @Test
+    fun enqueueRespectsQueueCapacity() {
+        assertEquals(true, canEnqueue(1, 1))
+        assertEquals(true, canEnqueue(499, 1))
+        assertEquals(false, canEnqueue(500, 1))
+        assertEquals(false, canEnqueue(10, 0))
+    }
+
+    @Test
+    fun reorderRequiresEditableNonShuffledQueue() {
+        assertEquals(false, canReorderQueue(2, shuffleEnabled = true, canEditQueue = true))
+        assertEquals(false, canReorderQueue(1, shuffleEnabled = false, canEditQueue = true))
+        assertEquals(true, canReorderQueue(2, shuffleEnabled = false, canEditQueue = true))
+    }
+
+    @Test
+    fun queueMoveRejectsInvalidIndices() {
+        assertEquals(false, isValidQueueMove(0, 0, 3))
+        assertEquals(false, isValidQueueMove(-1, 1, 3))
+        assertEquals(false, isValidQueueMove(0, 3, 3))
+        assertEquals(true, isValidQueueMove(0, 2, 3))
+    }
+
+    @Test
     fun repeatModesHaveStableLabels() {
         assertEquals("Off", repeatModeLabel(PlaybackRepeatMode.Off))
         assertEquals("All", repeatModeLabel(PlaybackRepeatMode.All))

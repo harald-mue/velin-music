@@ -42,11 +42,14 @@ import com.haraldmue.velin.playback.PlaybackQueueScreen
 import com.haraldmue.velin.playback.PlaybackViewModel
 import com.haraldmue.velin.playback.PlaybackViewModelFactory
 import com.haraldmue.velin.ui.library.AlbumDetailScreen
+import com.haraldmue.velin.ui.library.ArtistDetailScreen
 import com.haraldmue.velin.ui.library.HomeScreen
 import com.haraldmue.velin.ui.library.LibraryScreen
+import com.haraldmue.velin.ui.library.LibrarySection
 import com.haraldmue.velin.ui.library.LibraryViewModel
 import com.haraldmue.velin.ui.library.LibraryViewModelFactory
 import com.haraldmue.velin.ui.library.SearchScreen
+import com.haraldmue.velin.ui.library.TrackDetailScreen
 import com.haraldmue.velin.ui.pairing.PairingLoadingScreen
 import com.haraldmue.velin.ui.pairing.PairingScreen
 import com.haraldmue.velin.ui.pairing.PairingUiState
@@ -152,6 +155,8 @@ private fun ConnectedApp(
         showNowPlaying = false
         showPlaybackQueue = false
         libraryViewModel.closeAlbum()
+        libraryViewModel.closeArtist()
+        libraryViewModel.closeTrack()
         playbackViewModel.stopAndClear()
         onDisconnect()
     }
@@ -162,7 +167,13 @@ private fun ConnectedApp(
     BackHandler(enabled = showNowPlaying && !showPlaybackQueue) {
         showNowPlaying = false
     }
-    BackHandler(enabled = !showNowPlaying && libraryState.selectedAlbum != null) {
+    BackHandler(enabled = !showNowPlaying && libraryState.selectedTrackId != null) {
+        libraryViewModel.closeTrack()
+    }
+    BackHandler(enabled = !showNowPlaying && libraryState.selectedTrackId == null && libraryState.selectedArtist != null) {
+        libraryViewModel.closeArtist()
+    }
+    BackHandler(enabled = !showNowPlaying && libraryState.selectedTrackId == null && libraryState.selectedArtist == null && libraryState.selectedAlbum != null) {
         libraryViewModel.closeAlbum()
     }
 
@@ -174,6 +185,8 @@ private fun ConnectedApp(
                         text = when {
                             showPlaybackQueue -> "Queue"
                             showNowPlaying -> "Now playing"
+                            libraryState.selectedTrackId != null -> "Track"
+                            libraryState.selectedArtist != null -> "Artist"
                             libraryState.selectedAlbum != null -> "Album"
                             else -> "Velin"
                         },
@@ -188,13 +201,23 @@ private fun ConnectedApp(
                         showNowPlaying -> TextButton(onClick = { showNowPlaying = false }) {
                             Text("Back")
                         }
+                        libraryState.selectedTrackId != null -> TextButton(onClick = libraryViewModel::closeTrack) {
+                            Text("Back")
+                        }
+                        libraryState.selectedArtist != null -> TextButton(onClick = libraryViewModel::closeArtist) {
+                            Text("Back")
+                        }
                         libraryState.selectedAlbum != null -> TextButton(onClick = libraryViewModel::closeAlbum) {
                             Text("Back")
                         }
                     }
                 },
                 actions = {
-                    if (!showNowPlaying && libraryState.selectedAlbum == null) {
+                    if (!showNowPlaying &&
+                        libraryState.selectedAlbum == null &&
+                        libraryState.selectedArtist == null &&
+                        libraryState.selectedTrackId == null
+                    ) {
                         TextButton(onClick = libraryViewModel::refresh, enabled = !libraryState.loading) {
                             Text("Refresh")
                         }
@@ -223,6 +246,8 @@ private fun ConnectedApp(
                                 selected = destination == item,
                                 onClick = {
                                     libraryViewModel.closeAlbum()
+                                    libraryViewModel.closeArtist()
+                                    libraryViewModel.closeTrack()
                                     destination = item
                                 },
                                 icon = { Text(item.symbol, fontWeight = FontWeight.Bold) },
@@ -245,6 +270,7 @@ private fun ConnectedApp(
                     artworkClient = artworkClient,
                     onSelect = playbackViewModel::selectQueueItem,
                     onRemove = playbackViewModel::removeQueueItem,
+                    onMove = playbackViewModel::moveQueueItem,
                     onToggleShuffle = playbackViewModel::toggleShuffle,
                     onCycleRepeat = playbackViewModel::cycleRepeatMode,
                 )
@@ -261,6 +287,39 @@ private fun ConnectedApp(
                     onOpenQueue = { showPlaybackQueue = true },
                     onToggleShuffle = playbackViewModel::toggleShuffle,
                     onCycleRepeat = playbackViewModel::cycleRepeatMode,
+                )
+                return@Column
+            }
+            libraryState.selectedTrackId?.let {
+                TrackDetailScreen(
+                    state = libraryState,
+                    artworkClient = artworkClient,
+                    currentTrackId = playbackState.mediaId,
+                    onPlay = { track -> playQueue(listOf(track), 0) },
+                    onPlayNext = { track -> playbackViewModel.enqueueTrack(track, playNext = true) },
+                    onAddToQueue = { track -> playbackViewModel.enqueueTrack(track, playNext = false) },
+                    onOpenAlbum = { album ->
+                        libraryViewModel.closeTrack()
+                        libraryViewModel.openAlbum(album)
+                    },
+                    onOpenArtist = { artist ->
+                        libraryViewModel.closeTrack()
+                        libraryViewModel.openArtist(artist)
+                    },
+                    onRetry = libraryViewModel::retryTrack,
+                    onPairAgain = ::disconnect,
+                )
+                return@Column
+            }
+            libraryState.selectedArtist?.let { artist ->
+                ArtistDetailScreen(
+                    artist = artist,
+                    state = libraryState,
+                    artworkClient = artworkClient,
+                    currentTrackId = playbackState.mediaId,
+                    onPlayQueue = ::playQueue,
+                    onRetry = libraryViewModel::retryArtist,
+                    onPairAgain = ::disconnect,
                 )
                 return@Column
             }
@@ -291,6 +350,8 @@ private fun ConnectedApp(
                     currentTrackId = playbackState.mediaId,
                     onSearch = libraryViewModel::search,
                     onTrackClick = ::playQueue,
+                    onTrackDetail = libraryViewModel::openTrack,
+                    onLoadMoreSearch = libraryViewModel::loadMoreSearch,
                     onPairAgain = ::disconnect,
                 )
                 Destination.Library -> LibraryScreen(
@@ -298,7 +359,10 @@ private fun ConnectedApp(
                     artworkClient = artworkClient,
                     currentTrackId = playbackState.mediaId,
                     onAlbumClick = libraryViewModel::openAlbum,
+                    onArtistClick = libraryViewModel::openArtist,
                     onTrackClick = ::playQueue,
+                    onTrackDetail = libraryViewModel::openTrack,
+                    onLoadMore = libraryViewModel::loadMore,
                     onRetry = libraryViewModel::refresh,
                     onPairAgain = ::disconnect,
                 )

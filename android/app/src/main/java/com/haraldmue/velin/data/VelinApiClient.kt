@@ -21,8 +21,14 @@ private const val MaxAlbumQueueItems = 500
 interface LibraryGateway {
     suspend fun status(): ServerStatus
     suspend fun loadLibrary(): LibrarySnapshot
+    suspend fun loadArtistsPage(cursor: String? = null): Page<Artist>
+    suspend fun loadAlbumsPage(cursor: String? = null): Page<Album>
+    suspend fun loadTracksPage(cursor: String? = null): Page<Track>
+    suspend fun loadArtist(artistId: String): Artist
+    suspend fun loadTrack(trackId: String): TrackDetail
     suspend fun loadAlbumTracks(albumId: String): List<Track>
-    suspend fun search(query: String): Page<Track>
+    suspend fun loadArtistTracks(artistId: String): List<Track>
+    suspend fun search(query: String, cursor: String? = null): Page<Track>
 }
 
 class VelinApiClient(
@@ -52,14 +58,43 @@ class VelinApiClient(
     }
 
     override suspend fun loadLibrary(): LibrarySnapshot = coroutineScope {
-        val artists = async { loadArtists() }
-        val albums = async { loadAlbums() }
-        val tracks = async { loadTracks() }
+        val artists = async { loadArtistsPage() }
+        val albums = async { loadAlbumsPage() }
+        val tracks = async { loadTracksPage() }
         LibrarySnapshot(
-            artists = artists.await(),
-            albums = albums.await(),
-            tracks = tracks.await(),
+            artists = AccumulatedPage.from(artists.await()),
+            albums = AccumulatedPage.from(albums.await()),
+            tracks = AccumulatedPage.from(tracks.await()),
         )
+    }
+
+    override suspend fun loadArtistsPage(cursor: String?): Page<Artist> =
+        decodeArtistPage(getJSON("api/v1/artists", pageQuery(cursor)))
+
+    override suspend fun loadAlbumsPage(cursor: String?): Page<Album> =
+        decodeAlbumPage(getJSON("api/v1/albums", pageQuery(cursor)))
+
+    override suspend fun loadTracksPage(cursor: String?): Page<Track> =
+        decodeTrackPage(getJSON("api/v1/tracks", pageQuery(cursor)))
+
+    override suspend fun loadArtist(artistId: String): Artist {
+        val normalized = artistId.trim()
+        require(normalized.isNotEmpty() && normalized.length <= 128) { "Invalid artist ID." }
+        val json = getJSON("api/v1/artists/$normalized")
+        return decodeResponse {
+            Artist(
+                id = json.requiredString("id"),
+                name = json.requiredString("name"),
+                albumCount = json.nonNegativeInt("album_count"),
+                trackCount = json.nonNegativeInt("track_count"),
+            )
+        }
+    }
+
+    override suspend fun loadTrack(trackId: String): TrackDetail {
+        val normalized = trackId.trim()
+        require(normalized.isNotEmpty() && normalized.length <= 128) { "Invalid track ID." }
+        return decodeTrackDetail(getJSON("api/v1/tracks/$normalized"))
     }
 
     override suspend fun loadAlbumTracks(albumId: String): List<Track> {
@@ -86,22 +121,43 @@ class VelinApiClient(
         return tracks
     }
 
-    override suspend fun search(query: String): Page<Track> {
+    override suspend fun loadArtistTracks(artistId: String): List<Track> {
+        val normalized = artistId.trim()
+        require(normalized.isNotEmpty() && normalized.length <= 128) { "Invalid artist ID." }
+        val tracks = ArrayList<Track>()
+        val seenCursors = mutableSetOf<String>()
+        var cursor: String? = null
+        do {
+            val query = mutableMapOf("artist_id" to normalized, "limit" to "200")
+            cursor?.let { query["cursor"] = it }
+            val page = decodeTrackPage(getJSON("api/v1/tracks", query))
+            if (tracks.size + page.items.size > MaxAlbumQueueItems) {
+                throw ApiException("This artist has too many tracks for the playback queue.")
+            }
+            tracks += page.items
+            cursor = if (page.hasMore) {
+                page.nextCursor?.takeIf(seenCursors::add)
+                    ?: throw ApiException("The server returned invalid artist pagination.")
+            } else {
+                null
+            }
+        } while (cursor != null)
+        return tracks
+    }
+
+    override suspend fun search(query: String, cursor: String?): Page<Track> {
         val normalized = query.trim()
         require(normalized.isNotEmpty()) { "Enter a search query." }
         require(normalized.encodeToByteArray().size <= 2_048) { "The search query is too long." }
-        val json = getJSON("api/v1/search", mapOf("q" to normalized, "limit" to "50"))
-        return decodeTrackPage(json)
+        val queryParams = mutableMapOf("q" to normalized, "limit" to "50")
+        cursor?.let { queryParams["cursor"] = it }
+        return decodeTrackPage(getJSON("api/v1/search", queryParams))
     }
 
-    private suspend fun loadArtists(): Page<Artist> =
-        decodeArtistPage(getJSON("api/v1/artists", mapOf("limit" to "50")))
-
-    private suspend fun loadAlbums(): Page<Album> =
-        decodeAlbumPage(getJSON("api/v1/albums", mapOf("limit" to "50")))
-
-    private suspend fun loadTracks(): Page<Track> =
-        decodeTrackPage(getJSON("api/v1/tracks", mapOf("limit" to "50")))
+    private fun pageQuery(cursor: String?): Map<String, String> = buildMap {
+        put("limit", "50")
+        cursor?.let { put("cursor", it) }
+    }
 
     private suspend fun getJSON(path: String, query: Map<String, String> = emptyMap()): JSONObject =
         withContext(Dispatchers.IO) {
@@ -165,16 +221,44 @@ class VelinApiClient(
     }
 
     private fun decodeTrackPage(json: JSONObject): Page<Track> = decodePage(json) { item ->
-        Track(
-            id = item.requiredString("id"),
-            title = item.requiredString("title"),
-            format = item.requiredString("format"),
-            artistName = item.optionalString("artist_name"),
-            albumTitle = item.optionalString("album_title"),
-            durationMs = item.optionalLong("duration_ms"),
-            trackNumber = item.optionalInt("track_number"),
-            discNumber = item.optionalInt("disc_number"),
-            coverId = item.optionalString("cover_id"),
+        decodeTrack(item)
+    }
+
+    private fun decodeTrack(item: JSONObject): Track = Track(
+        id = item.requiredString("id"),
+        title = item.requiredString("title"),
+        format = item.requiredString("format"),
+        artistName = item.optionalString("artist_name"),
+        albumTitle = item.optionalString("album_title"),
+        durationMs = item.optionalLong("duration_ms"),
+        trackNumber = item.optionalInt("track_number"),
+        discNumber = item.optionalInt("disc_number"),
+        artistId = item.optionalString("artist_id"),
+        albumId = item.optionalString("album_id"),
+        coverId = item.optionalString("cover_id"),
+    )
+
+    private fun decodeTrackDetail(json: JSONObject): TrackDetail = decodeResponse {
+        TrackDetail(
+            id = json.requiredString("id"),
+            title = json.requiredString("title"),
+            format = json.requiredString("format"),
+            artistId = json.optionalString("artist_id"),
+            artistName = json.optionalString("artist_name"),
+            albumId = json.optionalString("album_id"),
+            albumTitle = json.optionalString("album_title"),
+            albumArtistName = json.optionalString("album_artist_name"),
+            genre = json.optionalString("genre"),
+            dateText = json.optionalString("date"),
+            trackNumber = json.optionalInt("track_number"),
+            totalTracks = json.optionalInt("total_tracks"),
+            discNumber = json.optionalInt("disc_number"),
+            totalDiscs = json.optionalInt("total_discs"),
+            durationMs = json.optionalLong("duration_ms"),
+            sampleRate = json.optionalInt("sample_rate"),
+            bitsPerSample = json.optionalInt("bits_per_sample"),
+            channels = json.optionalInt("channels"),
+            coverId = json.optionalString("cover_id"),
         )
     }
 

@@ -6,11 +6,11 @@ Last updated: 2026-09-04
 
 The Go executable provides storage, indexing, authentication, administration, protected library APIs, artwork, and original-format streaming. The native Android project now builds with Kotlin, Compose, and API 37 and provides the initial Velin theme and primary navigation shell.
 
-Android first-page library browsing/search, album details, and bounded visible-result/album queues are wired through Media3, including authenticated artwork, Now Playing, seeking, automatic advance, previous/next, queue inspection/removal, shuffle, and repeat. General pagination, artist/track details, queue reordering, and explicit enqueue actions remain.
+Android first-page library browsing/search, cursor pagination, album/artist/track details, bounded visible-result/album queues, queue reordering, and track-detail enqueue actions are wired through Media3, including authenticated artwork, Now Playing, seeking, automatic advance, previous/next, queue inspection/removal, shuffle, and repeat.
 
 ## Current milestone
 
-**M10 — Playback** (active; authenticated queues, artwork, mini-player, Now Playing, seeking, previous/next, queue inspection/removal, shuffle, and repeat are complete; broader device validation and optional queue reordering/enqueue actions remain).
+**M10 — Playback** (active; authenticated queues, artwork, mini-player, Now Playing, seeking, previous/next, queue inspection/removal/reordering, shuffle, repeat, and enqueue are complete; broader device validation remains).
 
 ## Completed
 
@@ -55,8 +55,11 @@ Android first-page library browsing/search, album details, and bounded visible-r
 - [x] Android Now Playing screen with title/artist/album/format, elapsed/duration/buffer polling, bounded seeking, replay, and back navigation.
 - [x] Bounded Library/Search result queues with selected start index, automatic Media3 advance, queue-position state, and previous/next controls.
 - [x] Authenticated Coil artwork for album/track rows, mini-player, and Now Playing plus a bounded/downsampled Media3 bitmap loader for notifications and lock-screen metadata.
-- [x] Album detail UI and bounded cursor-following album loading, with disc/track ordering, play-album action, selected-track start, retry, empty, and revocation states.
-- [x] Media3-backed queue screen with current-item highlighting, direct selection, safe removal, shuffle, and repeat Off/All/One.
+- [x] Cursor-based load-more for library artists/albums/tracks and search results.
+- [x] Artist detail with play-all and bounded artist-track loading; track detail with metadata, play action, and album/artist navigation.
+- [x] Track-detail Play next and Add to queue actions with bounded Media3 queue insertion.
+- [x] Media3-backed queue screen with current-item highlighting, direct selection, safe removal, long-press drag reorder (shuffle off), shuffle, and repeat Off/All/One.
+- [x] Extended ExoPlayer buffering (2–5 minute window) and longer OkHttp read timeouts for LAN FLAC streams.
 
 ## Deferred
 
@@ -114,12 +117,13 @@ Android:
 
 ## Recommended next task
 
-Finish general cursor pagination and artist/track detail navigation, then perform broader lock-screen, notification, Bluetooth/headset, and background-playback device validation.
+Finish broader lock-screen, notification, Bluetooth/headset, and background-playback device validation.
 
 ## Recent work log
 
 ### 2026-09-04
 
+- Added long-press drag reorder on the Media3 queue screen and extended ExoPlayer buffering for LAN FLAC streams.
 - Added a Media3-backed queue screen with direct selection/removal plus shuffle and repeat controls.
 - Added album detail navigation, bounded multi-page album loading, server-side disc/track keyset ordering, and complete album queue submission.
 - Added paired-origin-only authenticated artwork loading for Compose and MediaSession metadata, with redirect rejection, response bounds, notification downsampling, and no tokens in URLs.

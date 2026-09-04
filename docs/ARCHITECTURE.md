@@ -30,11 +30,20 @@ A native Kotlin/Jetpack Compose application. Responsibilities:
 - browsing artists, albums, and tracks
 - search and artwork display
 - playback and queue management
-- `MediaSessionService` integration
+- `MediaLibraryService` integration for phone UI, system controls, and Android Auto
 - lock-screen, headset, and Bluetooth controls
 - presentation of useful technical audio information without clutter
 
-The Android project is a native Kotlin/Jetpack Compose application with a dark Velin theme and `Home / Search / Library` navigation. Server pairing is available through strict QR-camera scanning or manual entry and a bounded OkHttp request; normalized connection metadata and the issued device token are encrypted with an AES-GCM key held by Android Keystore. A separate authenticated OkHttp client injects the bearer header, bounds and validates JSON responses, and loads status plus initial artist, album, track, and search pages. The playback process foundation is a non-exported Media3 `MediaSessionService` that owns ExoPlayer, audio focus, and becoming-noisy handling. Its server-bound OkHttp data source injects authorization in memory, accepts only exact paired-origin track-stream URLs, and disables redirects; media items contain opaque IDs and metadata but no token. A lifecycle-managed Compose `MediaController` submits the bounded visible Library/Search result as a queue, starts at the selected track, and drives a persistent mini-player plus a Now Playing screen with previous/next, queue position, polled position/duration/buffer state, and bounded seeking; disconnect stops and clears playback. Album/track rows, the mini-player, Now Playing, notifications, and lock-screen metadata can load covers through paired-origin-only clients. Artwork URLs contain no credentials; Coil and Media3 bitmap loaders inject authorization in memory, reject redirects, and bound notification decoding. Album rows open a detail view whose client follows album-scoped keyset cursors up to a hard 500-track queue bound; the server orders those pages by disc number, track number, title, and opaque ID. The Media3-backed queue screen exposes the current bounded queue, direct item selection, safe removal, long-press drag reorder when shuffle is off, shuffle, and repeat Off/All/One. Library and search lists support cursor-based load-more; artist and track detail screens expose metadata and playback entry points. Track detail can enqueue the next item or append to the bounded queue. ExoPlayer uses extended buffering (2–5 minute window) with longer OkHttp read timeouts for self-hosted FLAC over LAN.
+The Android project is a native Kotlin/Jetpack Compose application with a dark Velin theme and `Home / Search / Library` navigation. Server pairing is available through strict QR-camera scanning or manual entry and a bounded OkHttp request; normalized connection metadata and the issued device token are encrypted with an AES-GCM key held by Android Keystore. A separate authenticated OkHttp client injects the bearer header, bounds and validates JSON responses, and loads status plus initial artist, album, track, and search pages. Playback is owned by an exported Media3 `MediaLibraryService` that hosts ExoPlayer, a `MediaLibrarySession`, audio focus, and becoming-noisy handling. Android Auto, the Compose `MediaController`, notifications, lock screen, and Bluetooth all attach to that single session and queue. Its server-bound OkHttp data source injects authorization in memory, accepts only exact paired-origin track-stream URLs, and disables redirects; media items contain opaque IDs and metadata but no token. The library session exposes a driver-safe browse tree of Albums and Artists (Recently Played/Added are omitted because the server does not provide those collections) with keyset-backed pagination and FTS track search. A lifecycle-managed Compose `MediaController` submits the bounded visible Library/Search result as a queue, starts at the selected track, and drives a persistent mini-player plus a Now Playing screen with previous/next, queue position, polled position/duration/buffer state, and bounded seeking; disconnect stops and clears playback. Album/track rows, the mini-player, Now Playing, notifications, and lock-screen metadata can load covers through paired-origin-only clients. Artwork URLs contain no credentials; Coil and Media3 bitmap loaders inject authorization in memory, reject redirects, and bound notification decoding. Album rows open a detail view whose client follows album-scoped keyset cursors up to a hard 500-track queue bound; the server orders those pages by disc number, track number, title, and opaque ID. The Media3-backed queue screen exposes the current bounded queue, direct item selection, safe removal, long-press drag reorder when shuffle is off, shuffle, and repeat Off/All/One. Library and search lists support cursor-based load-more; artist and track detail screens expose metadata and playback entry points. Track detail can enqueue the next item or append to the bounded queue. ExoPlayer uses extended buffering (2–5 minute window). Stream reads use a 120-second timeout so FLAC playback can idle on a full buffer; on physical devices, losing the default network cancels in-flight library and stream calls. Playback resumption after process death is not implemented.
+
+```text
+Compose UI ───────┐
+                  │
+Android Auto ─────┼──> MediaLibraryService
+                  │        │
+System controls ──┘        ├── MediaLibrarySession
+                           └── ExoPlayer
+```
 
 ## High-level data flow
 
@@ -59,7 +68,7 @@ Velin Server (authenticated HTTP Range)
       ↓
 Media3 / ExoPlayer data source
       ↓
-Android audio stack and MediaSession
+Android audio stack, MediaLibrarySession, Android Auto, and system controls
 ```
 
 ```text

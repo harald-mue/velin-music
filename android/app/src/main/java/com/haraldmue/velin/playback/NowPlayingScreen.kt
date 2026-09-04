@@ -1,18 +1,38 @@
 package com.haraldmue.velin.playback
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.Repeat
+import androidx.compose.material.icons.rounded.RepeatOne
+import androidx.compose.material.icons.rounded.Replay
+import androidx.compose.material.icons.rounded.Shuffle
+import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.SkipPrevious
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -22,6 +42,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -45,7 +67,6 @@ fun NowPlayingScreen(
     var dragging by remember(state.mediaId) { mutableStateOf(false) }
     var sliderFraction by remember(state.mediaId) { mutableFloatStateOf(0f) }
     val positionFraction = progressFraction(state.positionMs, duration)
-    val bufferedFraction = progressFraction(state.bufferedPositionMs, duration)
 
     LaunchedEffect(positionFraction, dragging) {
         if (!dragging) sliderFraction = positionFraction
@@ -54,16 +75,19 @@ fun NowPlayingScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 28.dp, vertical = 24.dp),
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp, vertical = 12.dp)
+            .animateContentSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
     ) {
         ArtworkImage(
             artworkClient = artworkClient,
             artworkUrl = state.artworkUrl,
             modifier = Modifier
-                .fillMaxWidth(0.72f)
-                .aspectRatio(1f),
+                .fillMaxWidth(0.64f)
+                .widthIn(max = 360.dp)
+                .aspectRatio(1f)
+                .shadow(18.dp, MaterialTheme.shapes.large),
         )
         Text(
             text = state.title ?: "Nothing playing",
@@ -71,54 +95,40 @@ fun NowPlayingScreen(
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold,
+            style = MaterialTheme.typography.headlineMedium,
         )
         val subtitle = listOfNotNull(state.artist, state.album).joinToString(" · ")
         if (subtitle.isNotEmpty()) {
             Text(
                 text = subtitle,
-                modifier = Modifier.padding(top = 8.dp),
+                modifier = Modifier.padding(top = 6.dp),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         val playbackDetail = listOfNotNull(
-            state.format,
+            state.format?.uppercase(),
             if (state.queueSize > 1) "${state.queueIndex + 1} of ${state.queueSize}" else null,
         ).joinToString(" · ")
         if (playbackDetail.isNotEmpty()) {
-            Text(
-                text = playbackDetail,
-                modifier = Modifier.padding(top = 8.dp),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-        ) {
-            TextButton(onClick = onOpenQueue, enabled = state.queue.isNotEmpty()) {
-                Text("Queue (${state.queue.size})")
-            }
-            TextButton(onClick = onToggleShuffle, enabled = state.queue.size > 1) {
-                Text(if (state.shuffleEnabled) "Shuffle on" else "Shuffle off")
-            }
-            TextButton(onClick = onCycleRepeat, enabled = state.queue.isNotEmpty()) {
-                Text("Repeat ${repeatModeLabel(state.repeatMode)}")
+            Surface(
+                modifier = Modifier.padding(top = 12.dp),
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
+            ) {
+                Text(
+                    text = playbackDetail,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
             }
         }
-        LinearProgressIndicator(
-            progress = { bufferedFraction },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 28.dp),
-            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
-            trackColor = MaterialTheme.colorScheme.surfaceVariant,
-        )
+
+        Spacer(modifier = Modifier.height(18.dp))
         Slider(
             value = sliderFraction,
             onValueChange = {
@@ -137,44 +147,135 @@ fun NowPlayingScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(formatPlaybackTime(if (dragging && duration != null) (sliderFraction * duration).toLong() else state.positionMs))
-            Text(duration?.let(::formatPlaybackTime) ?: "--:--")
-        }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 28.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            TextButton(onClick = onPrevious, enabled = state.hasPrevious) {
-                Text("Previous")
-            }
-            Button(
-                onClick = onTogglePlayPause,
-                enabled = state.mediaId != null && !state.isBuffering,
-            ) {
-                Text(if (state.isPlaying) "Pause" else if (state.isEnded) "Replay" else "Play")
-            }
-            TextButton(onClick = onNext, enabled = state.hasNext) {
-                Text("Next")
-            }
-        }
-        if (state.isBuffering) {
             Text(
-                text = "Buffering…",
-                modifier = Modifier.padding(top = 12.dp),
+                formatPlaybackTime(
+                    if (dragging && duration != null) (sliderFraction * duration).toLong() else state.positionMs,
+                ),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                duration?.let(::formatPlaybackTime) ?: "--:--",
+                style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        state.error?.let { error ->
-            Text(
-                text = error,
-                modifier = Modifier.padding(top = 16.dp),
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.error,
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onPrevious, enabled = state.hasPrevious, modifier = Modifier.size(56.dp)) {
+                Icon(Icons.Rounded.SkipPrevious, contentDescription = "Previous track", modifier = Modifier.size(34.dp))
+            }
+            FilledIconButton(
+                onClick = onTogglePlayPause,
+                enabled = state.mediaId != null && !state.isBuffering,
+                modifier = Modifier.size(72.dp),
+            ) {
+                if (state.isBuffering) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(28.dp),
+                        strokeWidth = 2.5.dp,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
+                } else {
+                    Icon(
+                        imageVector = when {
+                            state.isPlaying -> Icons.Rounded.Pause
+                            state.isEnded -> Icons.Rounded.Replay
+                            else -> Icons.Rounded.PlayArrow
+                        },
+                        contentDescription = when {
+                            state.isPlaying -> "Pause"
+                            state.isEnded -> "Replay"
+                            else -> "Play"
+                        },
+                        modifier = Modifier.size(38.dp),
+                    )
+                }
+            }
+            IconButton(onClick = onNext, enabled = state.hasNext, modifier = Modifier.size(56.dp)) {
+                Icon(Icons.Rounded.SkipNext, contentDescription = "Next track", modifier = Modifier.size(34.dp))
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 12.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+        ) {
+            PlaybackOption(
+                icon = Icons.Rounded.Shuffle,
+                label = if (state.shuffleEnabled) "Shuffle on" else "Shuffle",
+                selected = state.shuffleEnabled,
+                enabled = state.queue.size > 1,
+                onClick = onToggleShuffle,
+            )
+            PlaybackOption(
+                icon = Icons.AutoMirrored.Rounded.QueueMusic,
+                label = "Queue · ${state.queue.size}",
+                enabled = state.queue.isNotEmpty(),
+                onClick = onOpenQueue,
+            )
+            PlaybackOption(
+                icon = if (state.repeatMode == PlaybackRepeatMode.One) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
+                label = "Repeat ${repeatModeLabel(state.repeatMode)}",
+                selected = state.repeatMode != PlaybackRepeatMode.Off,
+                enabled = state.queue.isNotEmpty(),
+                onClick = onCycleRepeat,
             )
         }
+
+        state.error?.let { error ->
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp),
+                color = MaterialTheme.colorScheme.error.copy(alpha = 0.12f),
+                shape = MaterialTheme.shapes.medium,
+            ) {
+                Text(
+                    text = error,
+                    modifier = Modifier.padding(14.dp),
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlaybackOption(
+    icon: ImageVector,
+    label: String,
+    selected: Boolean = false,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        IconButton(onClick = onClick, enabled = enabled) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = when {
+                    !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                    selected -> MaterialTheme.colorScheme.primary
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

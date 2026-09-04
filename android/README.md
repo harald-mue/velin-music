@@ -43,9 +43,22 @@ After pairing, a dedicated OkHttp client adds the stored bearer token through an
 
 ## Playback foundation
 
-`PlaybackService` owns an ExoPlayer inside a Media3 `MediaSessionService`. It requests media audio focus, handles unplugged/headset "becoming noisy" events, and is declared as a non-exported media-playback foreground service. The manifest contains the foreground-service and notification permissions required by current Android versions.
+`PlaybackService` owns an ExoPlayer inside a Media3 `MediaLibraryService` / `MediaLibrarySession`. It requests media audio focus, handles unplugged/headset "becoming noisy" events, and is declared as an exported media-playback foreground service so Android Auto can browse the library. The manifest contains the Android Auto media capability, Media3 library-service and platform MediaBrowser actions, a launcher icon (required for Auto’s media-app list), and the foreground-service and notification permissions required by current Android versions.
 
-The service uses `PlaybackDataSourceFactory`, an OkHttp-backed Media3 data source that adds the bearer header in memory. It accepts only exact track-stream paths on the paired server origin, preserves an optional server base path, rejects query strings and foreign origins, and disables redirects. `PlaybackMediaItemFactory` converts an opaque track ID and public metadata into a token-free Media3 item with the correct FLAC or MP3 MIME type.
+Sideloaded debug APKs are not Play Store media apps. Android Auto hides them unless developer options are enabled on the phone:
+
+1. Open the **Android Auto** app (not the car screen).
+2. Tap the version number until developer mode unlocks.
+3. Enable **Unknown sources**.
+4. Force-stop Android Auto, reopen Velin once on the phone, then reconnect the car or Desktop Head Unit.
+
+Velin appears under Auto’s **media apps**, not as a custom Auto launcher tile. Pairing must already have succeeded on the phone.
+
+Wireless Android Auto uses the phone’s Wi-Fi for the car link, which disconnects a LAN-only Velin server. USB Android Auto keeps phone Wi-Fi available. On a physical device, when the current default network is lost after a short startup grace period, Velin cancels in-flight library requests. Stream reads use a 120-second timeout so FLAC playback can idle on a full buffer; the emulator does not cancel streams on virtio network flaps. Pair the emulator to `http://10.0.2.2:8080` when the server listens on the host.
+
+The Android 12+ splash uses the launcher mark briefly; the window background is graphite so the large “V” does not remain as the activity surface.
+
+The service uses `PlaybackDataSourceFactory`, an OkHttp-backed Media3 data source that adds the bearer header in memory. Android Auto (including the Desktop Head Unit) connects from another package; the library session advertises Media3 library browse commands and accepts subscribe so Auto can leave the loading spinner. It accepts only exact track-stream paths on the paired server origin, preserves an optional server base path, rejects query strings and foreign origins, and disables redirects. `PlaybackMediaItemFactory` converts an opaque track ID and public metadata into a token-free Media3 item with the correct FLAC or MP3 MIME type.
 
 ## Current boundaries
 
@@ -57,6 +70,6 @@ Album rows now open a cover-backed detail screen that follows authenticated curs
 
 Now Playing opens a queue screen backed directly by Media3 state. It highlights and selects the current item, removes entries while preserving at least one item, supports long-press drag reorder when shuffle is off, toggles shuffle, and cycles repeat through Off, All, and One. Shuffle/repeat state also appears on Now Playing. Track detail exposes Play next and Add to queue actions that insert into the bounded Media3 queue.
 
-General-library lists and search now support cursor-based load-more. Artist rows open a detail screen with play-all; track rows expose an Info action for metadata and play. ExoPlayer uses extended buffering (2–5 minute window) with longer OkHttp read timeouts for self-hosted FLAC over LAN. A user-confirmed physical-device smoke test covers server connection, library display, and single-track playback. Automated instrumentation, QR-camera behavior, credential restoration after restart, notification controls, and extended background playback still require device validation.
+General-library lists and search now support cursor-based load-more. Artist rows open a detail screen with play-all; track rows expose an Info action for metadata and play. ExoPlayer uses extended buffering (2–5 minute window) with longer OkHttp read timeouts for self-hosted FLAC over LAN. Android Auto can browse Albums and Artists through the same playback service; Recently Played/Added are omitted because the server does not expose those collections. A user-confirmed physical-device smoke test covers server connection, library display, and single-track playback. Automated instrumentation, QR-camera behavior, credential restoration after restart, notification controls, Android Auto in-car browse/playback, and extended background playback still require device validation. Playback resumption after process death is not implemented.
 
 Bearer authorization must be supplied through the Media3 data source and must never be placed in stream URLs or logs. Both FLAC and MP3 streams remain first-class inputs, and the client does not request transcoding.

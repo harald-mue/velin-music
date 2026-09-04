@@ -13,11 +13,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.DragHandle
+import androidx.compose.material.icons.rounded.Repeat
+import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -51,7 +57,7 @@ fun PlaybackQueueScreen(
         contentPadding = PaddingValues(20.dp),
     ) {
         item {
-            Text("Playback queue", style = MaterialTheme.typography.headlineMedium)
+            Text("Up next", style = MaterialTheme.typography.headlineLarge)
             Text(
                 text = "${state.queue.size} tracks",
                 modifier = Modifier.padding(top = 4.dp),
@@ -85,12 +91,14 @@ fun PlaybackQueueScreen(
                     onClick = onToggleShuffle,
                     enabled = state.queue.size > 1,
                     label = { Text("Shuffle") },
+                    leadingIcon = { Icon(Icons.Rounded.Shuffle, contentDescription = null) },
                 )
                 FilterChip(
                     selected = state.repeatMode != PlaybackRepeatMode.Off,
                     onClick = onCycleRepeat,
                     enabled = state.queue.isNotEmpty(),
-                    label = { Text("Repeat: ${repeatModeLabel(state.repeatMode)}") },
+                    label = { Text("Repeat ${repeatModeLabel(state.repeatMode)}") },
+                    leadingIcon = { Icon(Icons.Rounded.Repeat, contentDescription = null) },
                 )
             }
         }
@@ -181,13 +189,14 @@ private fun ReorderableQueueRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(
-            text = "≡",
+        Icon(
+            imageVector = Icons.Rounded.DragHandle,
+            contentDescription = if (canReorder) "Drag to reorder" else null,
             modifier = Modifier.padding(end = 4.dp),
-            color = if (canReorder) {
+            tint = if (canReorder) {
                 MaterialTheme.colorScheme.onSurfaceVariant
             } else {
-                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
             },
         )
         ArtworkImage(
@@ -217,11 +226,8 @@ private fun ReorderableQueueRow(
                 )
             }
         }
-        TextButton(
-            onClick = onRemove,
-            enabled = canRemove,
-        ) {
-            Text("Remove")
+        IconButton(onClick = onRemove, enabled = canRemove) {
+            Icon(Icons.Rounded.DeleteOutline, contentDescription = "Remove from queue")
         }
     }
 }

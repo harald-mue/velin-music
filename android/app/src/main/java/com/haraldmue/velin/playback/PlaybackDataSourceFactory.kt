@@ -32,12 +32,17 @@ class PlaybackDataSourceFactory(
         delegate = delegateFactory.createDataSource(),
     )
 
-    private companion object {
+    internal companion object {
         fun playbackHttpClient(): OkHttpClient = OkHttpClient.Builder()
             .followRedirects(false)
             .followSslRedirects(false)
+            .retryOnConnectionFailure(true)
             .connectTimeout(10, TimeUnit.SECONDS)
+            // FLAC range reads can idle while ExoPlayer plays from its buffer; a 12s
+            // read timeout aborts healthy emulator/LAN streams. Network loss still
+            // cancels in-flight calls from PlaybackService.
             .readTimeout(120, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
             .callTimeout(0, TimeUnit.MILLISECONDS)
             .build()
     }

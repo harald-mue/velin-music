@@ -185,6 +185,26 @@ class VelinApiClientTest {
     }
 
     @Test
+    fun loadAlbumParsesDetailMetadata() = runTest {
+        MockWebServer().use { server ->
+            server.enqueue(
+                MockResponse().setBody(
+                    """{"id":"album-1","title":"Album","artist_name":"Artist","year":2026,"cover_id":"cover-1","track_count":8}""",
+                ),
+            )
+            val client = VelinApiClient(credentials(server))
+
+            val album = client.loadAlbum("album-1")
+
+            assertEquals("Album", album.title)
+            assertEquals("Artist", album.artistName)
+            assertEquals("cover-1", album.coverId)
+            assertEquals(8, album.trackCount)
+            assertEquals("/api/v1/albums/album-1", server.takeRequest().path)
+        }
+    }
+
+    @Test
     fun unauthorizedResponseIsMarkedAsAuthenticationFailure() = runTest {
         MockWebServer().use { server ->
             server.enqueue(MockResponse().setResponseCode(401).setBody("{}"))

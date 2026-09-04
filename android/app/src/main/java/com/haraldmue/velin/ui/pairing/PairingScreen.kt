@@ -218,7 +218,12 @@ fun PairingLoadingScreen() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            CircularProgressIndicator()
+            Text(
+                text = "Velin",
+                style = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+            CircularProgressIndicator(modifier = Modifier.padding(top = 24.dp))
         }
     }
 }

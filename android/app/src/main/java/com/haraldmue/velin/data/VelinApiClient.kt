@@ -1,17 +1,25 @@
 package com.haraldmue.velin.data
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import org.json.JSONException
 import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 private const val MaxApiResponseBytes = 1L * 1_024L * 1_024L
 private const val MaxPageItems = 200
@@ -21,14 +29,20 @@ private const val MaxAlbumQueueItems = 500
 interface LibraryGateway {
     suspend fun status(): ServerStatus
     suspend fun loadLibrary(): LibrarySnapshot
-    suspend fun loadArtistsPage(cursor: String? = null): Page<Artist>
-    suspend fun loadAlbumsPage(cursor: String? = null): Page<Album>
-    suspend fun loadTracksPage(cursor: String? = null): Page<Track>
+    suspend fun loadArtistsPage(cursor: String? = null, limit: Int = 50): Page<Artist>
+    suspend fun loadAlbumsPage(cursor: String? = null, limit: Int = 50): Page<Album>
+    suspend fun loadTracksPage(
+        cursor: String? = null,
+        artistId: String? = null,
+        albumId: String? = null,
+        limit: Int = 50,
+    ): Page<Track>
     suspend fun loadArtist(artistId: String): Artist
+    suspend fun loadAlbum(albumId: String): Album
     suspend fun loadTrack(trackId: String): TrackDetail
     suspend fun loadAlbumTracks(albumId: String): List<Track>
     suspend fun loadArtistTracks(artistId: String): List<Track>
-    suspend fun search(query: String, cursor: String? = null): Page<Track>
+    suspend fun search(query: String, cursor: String? = null, limit: Int = 50): Page<Track>
 }
 
 class VelinApiClient(
@@ -45,6 +59,11 @@ class VelinApiClient(
             chain.proceed(request)
         }
         .build()
+
+    fun cancelInFlight() {
+        authenticatedClient.dispatcher.cancelAll()
+        authenticatedClient.connectionPool.evictAll()
+    }
 
     override suspend fun status(): ServerStatus {
         val json = getJSON("api/v1/status")
@@ -68,14 +87,24 @@ class VelinApiClient(
         )
     }
 
-    override suspend fun loadArtistsPage(cursor: String?): Page<Artist> =
-        decodeArtistPage(getJSON("api/v1/artists", pageQuery(cursor)))
+    override suspend fun loadArtistsPage(cursor: String?, limit: Int): Page<Artist> =
+        decodeArtistPage(getJSON("api/v1/artists", pageQuery(cursor, limit)))
 
-    override suspend fun loadAlbumsPage(cursor: String?): Page<Album> =
-        decodeAlbumPage(getJSON("api/v1/albums", pageQuery(cursor)))
+    override suspend fun loadAlbumsPage(cursor: String?, limit: Int): Page<Album> =
+        decodeAlbumPage(getJSON("api/v1/albums", pageQuery(cursor, limit)))
 
-    override suspend fun loadTracksPage(cursor: String?): Page<Track> =
-        decodeTrackPage(getJSON("api/v1/tracks", pageQuery(cursor)))
+    override suspend fun loadTracksPage(
+        cursor: String?,
+        artistId: String?,
+        albumId: String?,
+        limit: Int,
+    ): Page<Track> {
+        val extra = buildMap {
+            artistId?.trim()?.takeIf(String::isNotEmpty)?.let { put("artist_id", it) }
+            albumId?.trim()?.takeIf(String::isNotEmpty)?.let { put("album_id", it) }
+        }
+        return decodeTrackPage(getJSON("api/v1/tracks", pageQuery(cursor, limit, extra)))
+    }
 
     override suspend fun loadArtist(artistId: String): Artist {
         val normalized = artistId.trim()
@@ -89,6 +118,13 @@ class VelinApiClient(
                 trackCount = json.nonNegativeInt("track_count"),
             )
         }
+    }
+
+    override suspend fun loadAlbum(albumId: String): Album {
+        val normalized = albumId.trim()
+        require(normalized.isNotEmpty() && normalized.length <= 128) { "Invalid album ID." }
+        val json = getJSON("api/v1/albums/$normalized")
+        return decodeResponse { decodeAlbum(json) }
     }
 
     override suspend fun loadTrack(trackId: String): TrackDetail {
@@ -145,18 +181,22 @@ class VelinApiClient(
         return tracks
     }
 
-    override suspend fun search(query: String, cursor: String?): Page<Track> {
+    override suspend fun search(query: String, cursor: String?, limit: Int): Page<Track> {
         val normalized = query.trim()
         require(normalized.isNotEmpty()) { "Enter a search query." }
         require(normalized.encodeToByteArray().size <= 2_048) { "The search query is too long." }
-        val queryParams = mutableMapOf("q" to normalized, "limit" to "50")
-        cursor?.let { queryParams["cursor"] = it }
+        val queryParams = pageQuery(cursor, limit, mapOf("q" to normalized))
         return decodeTrackPage(getJSON("api/v1/search", queryParams))
     }
 
-    private fun pageQuery(cursor: String?): Map<String, String> = buildMap {
-        put("limit", "50")
+    private fun pageQuery(
+        cursor: String?,
+        limit: Int = 50,
+        extra: Map<String, String> = emptyMap(),
+    ): Map<String, String> = buildMap {
+        put("limit", limit.coerceIn(1, 200).toString())
         cursor?.let { put("cursor", it) }
+        putAll(extra)
     }
 
     private suspend fun getJSON(path: String, query: Map<String, String> = emptyMap()): JSONObject =
@@ -165,9 +205,15 @@ class VelinApiClient(
                 .url(endpoint(path, query))
                 .get()
                 .build()
+            val call = authenticatedClient.newCall(request)
             val response = try {
-                authenticatedClient.newCall(request).execute()
+                call.awaitCancellable()
+            } catch (error: CancellationException) {
+                throw error
             } catch (_: IOException) {
+                if (call.isCanceled() && !isActive) {
+                    throw CancellationException("Velin request cancelled")
+                }
                 throw ApiException("Cannot reach the Velin server.")
             }
             response.use {
@@ -210,15 +256,17 @@ class VelinApiClient(
     }
 
     private fun decodeAlbumPage(json: JSONObject): Page<Album> = decodePage(json) { item ->
-        Album(
-            id = item.requiredString("id"),
-            title = item.requiredString("title"),
-            artistName = item.optionalString("artist_name"),
-            year = item.optionalInt("year"),
-            coverId = item.optionalString("cover_id"),
-            trackCount = item.nonNegativeInt("track_count"),
-        )
+        decodeAlbum(item)
     }
+
+    private fun decodeAlbum(item: JSONObject): Album = Album(
+        id = item.requiredString("id"),
+        title = item.requiredString("title"),
+        artistName = item.optionalString("artist_name"),
+        year = item.optionalInt("year"),
+        coverId = item.optionalString("cover_id"),
+        trackCount = item.nonNegativeInt("track_count"),
+    )
 
     private fun decodeTrackPage(json: JSONObject): Page<Track> = decodePage(json) { item ->
         decodeTrack(item)
@@ -286,17 +334,42 @@ class VelinApiClient(
 
     companion object {
         private fun defaultHttpClient(): OkHttpClient = OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(20, TimeUnit.SECONDS)
-            .callTimeout(30, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(false)
+            .connectTimeout(8, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .writeTimeout(10, TimeUnit.SECONDS)
+            .callTimeout(20, TimeUnit.SECONDS)
             .build()
     }
 }
 
+private suspend fun Call.awaitCancellable(): Response =
+    suspendCancellableCoroutine { continuation ->
+        enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                if (continuation.isActive) {
+                    continuation.resumeWithException(e)
+                }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                if (continuation.isActive) {
+                    continuation.resume(response)
+                } else {
+                    response.close()
+                }
+            }
+        })
+        continuation.invokeOnCancellation { cancel() }
+    }
+
 class ApiException(
     message: String,
     val authenticationFailed: Boolean = false,
-) : Exception(message)
+) : Exception(message) {
+    val isNotFound: Boolean
+        get() = message?.contains("HTTP 404") == true
+}
 
 private fun JSONObject.requiredString(name: String): String =
     getString(name).trim().also {

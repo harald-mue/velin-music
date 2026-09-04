@@ -415,3 +415,25 @@ Expose optional process-level scan automation through `VELIN_SCAN_ON_STARTUP` (d
 ### Consequences
 
 Scan automation settings are not persisted in the database and require process restart to change. Scheduled ticks that arrive during an active full-library scan are skipped with an info log. Admin `POST /api/v1/admin/scans` now returns `409 scan_running` when a full-library scan is already active. Per-root scans remain available while a full-library scan runs, subject to the existing one-running-scan-per-root database guard.
+
+## ADR-020 — MediaLibraryService for Android Auto and phone playback
+
+Status: Accepted
+
+Date: 2026-09-04
+
+### Context
+
+Velin already owned playback in a Media3 `MediaSessionService` consumed by Compose through `MediaController`. Android Auto media apps need a browsable library as well as a shared player. Introducing a second service or a Car App Library template UI would split playback state and fight the host-provided driver-safe interface.
+
+### Decision
+
+Migrate the existing `PlaybackService` to Media3 `MediaLibraryService` with a `MediaLibrarySession`. Keep a single ExoPlayer and a single queue. Expose only server-backed Albums and Artists (plus FTS track search). Resolve Android Auto play requests through the existing authenticated stream data source. Export the service with the Media3 library-service and platform MediaBrowser intent filters, and declare the Android Auto media capability. Do not add an Android Automotive OS module or a custom Auto UI.
+
+### Rationale
+
+`MediaLibrarySession` is the supported way for Android Auto to browse a media app while phone UI, notifications, lock screen, and Bluetooth continue to use the same session. Reusing `LibraryGateway` avoids a second HTTP stack. Prefixed browse IDs stay separate from token-free playback `MediaItem` IDs used by the phone queue.
+
+### Consequences
+
+The playback service is exported. Tokens must never appear in media IDs, metadata, or URLs; authorization remains an in-memory OkHttp/Media3 header. Recently Played/Added are omitted until the server provides those collections. Playback resumption after process death remains unimplemented. Android Automotive OS is still out of scope.

@@ -34,15 +34,22 @@ class ArtworkClient(
         runCatching { policy.urlFor(id) }.getOrNull()
     }
 
+    fun cancelInFlight() {
+        httpClient.dispatcher.cancelAll()
+        httpClient.connectionPool.evictAll()
+    }
+
     fun close() {
+        cancelInFlight()
         imageLoader.shutdown()
     }
 
     private companion object {
         fun defaultArtworkHttpClient(): OkHttpClient = OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .callTimeout(45, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(false)
+            .connectTimeout(8, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .callTimeout(20, TimeUnit.SECONDS)
             .build()
     }
 }

@@ -16,9 +16,11 @@ Dark mode is the primary mode. Use near-black graphite surfaces rather than pure
 
 Avoid excessive rounded cards, glassmorphism, generic SaaS dashboard styling, and ornamental gradients. Prefer hierarchy, spacing, typography, dividers, surfaces, subtle elevation, and precise geometry.
 
+The implemented phone theme uses near-black graphite backgrounds, restrained ice-blue accents, lightweight display headings, denser semibold content labels, softly rounded artwork, and tonal surfaces only where grouping benefits from them. System bars remain dark with light icons so edge-to-edge content retains clear contrast.
+
 ## Iconography and mark
 
-Velin's eventual icon family is custom, monochrome, geometric, simple, recognizable, and consistent in stroke/fill weight on a shared grid. A music note is not the primary brand mark. Explore an abstract geometric `V` that can also suggest stereo channels, waveform geometry, or a server/client connection.
+Velin's eventual icon family is custom, monochrome, geometric, simple, recognizable, and consistent in stroke/fill weight on a shared grid. Until that family exists, use coherent Material icons for navigation and actions rather than letters or text glyphs. A music note is not the primary brand mark. Explore an abstract geometric `V` that can also suggest stereo channels, waveform geometry, or a server/client connection.
 
 ## Navigation
 
@@ -36,7 +38,7 @@ Plan for onboarding/pairing, home, albums, album detail, artists, artist detail,
 
 ## Playback and audio quality
 
-Playback belongs in a background `MediaSessionService`, not an Activity. The UI may present useful technical information such as `FLAC`, `MP3`, `24-bit`, `96 kHz`, or `2 channels`, but normal playback controls should remain uncluttered. Original-format streaming and seeking are part of the experience.
+Playback belongs in a background `MediaLibraryService`, not an Activity. The phone UI uses the Velin design system. Android Auto uses the host-provided driver-safe media interface; Velin supplies hierarchy, metadata, artwork, and playback controls rather than a custom automotive layout. The UI may present useful technical information such as `FLAC`, `MP3`, `24-bit`, `96 kHz`, or `2 channels`, but normal playback controls should remain uncluttered. Original-format streaming and seeking are part of the experience.
 
 ## Accessibility
 

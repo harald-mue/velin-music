@@ -4,13 +4,13 @@ Last updated: 2026-09-04
 
 ## Current status
 
-The Go executable provides storage, indexing, authentication, administration, protected library APIs, artwork, and original-format streaming. The native Android project now builds with Kotlin, Compose, and API 37 and provides the initial Velin theme and primary navigation shell.
+The Go executable provides storage, indexing, authentication, administration, protected library APIs, artwork, and original-format streaming. The native Android project builds with Kotlin, Compose, and API 37 and provides a refined graphite/ice-blue visual system and primary navigation shell.
 
-Android first-page library browsing/search, cursor pagination, album/artist/track details, bounded visible-result/album queues, queue reordering, and track-detail enqueue actions are wired through Media3, including authenticated artwork, Now Playing, seeking, automatic advance, previous/next, queue inspection/removal, shuffle, and repeat.
+Android first-page library browsing/search, cursor pagination, album/artist/track details, bounded visible-result/album queues, queue reordering, and track-detail enqueue actions are wired through Media3, including authenticated artwork, Now Playing, seeking, automatic advance, previous/next, queue inspection/removal, shuffle, and repeat. Playback is owned by an exported `MediaLibraryService` that also exposes an Android Auto media library (Albums and Artists).
 
 ## Current milestone
 
-**M10 — Playback** (active; authenticated queues, artwork, mini-player, Now Playing, seeking, previous/next, queue inspection/removal/reordering, shuffle, repeat, and enqueue are complete; broader device validation remains).
+**M10 — Playback** (active; authenticated queues, artwork, mini-player, Now Playing, seeking, previous/next, queue inspection/removal/reordering, shuffle, repeat, enqueue, and Android Auto media-library browsing are complete; broader device and in-car validation remains).
 
 ## Completed
 
@@ -44,12 +44,12 @@ Android first-page library browsing/search, cursor pagination, album/artist/trac
 - [x] Startup recovery for abandoned `running` scans and artwork-cache garbage collection.
 - [x] Optional startup scan and periodic scheduler for configured library roots.
 - [x] Admin scan error detail UI and search diagnostics.
-- [x] Kotlin/Compose Android project with Gradle Wrapper, API 37 build, dark Velin theme, primary navigation shell, and unit tests.
+- [x] Kotlin/Compose Android project with Gradle Wrapper, API 37 build, polished graphite/ice-blue theme, accessible Material iconography, primary navigation shell, and unit tests.
 - [x] Android QR/manual pairing with CameraX/ZXing, strict payload parsing, bounded OkHttp response handling, HTTP(S) URL normalization, safe errors, and Android Keystore-backed AES-GCM credential storage.
 - [x] Server administration pairing result renders an ephemeral QR image directly from the token-free `server_url`/`code` payload.
 - [x] Authenticated Android OkHttp client with bearer injection, bounded JSON decoding, revocation handling, and initial status/artist/album/track/search loading.
 - [x] Android Home summary, searchable track results, and first-page Library views with loading, empty, and recoverable-error states.
-- [x] Non-exported Android Media3 `MediaSessionService` owning ExoPlayer with media audio focus, becoming-noisy handling, and foreground-service manifest declarations.
+- [x] Exported Android Media3 `MediaLibraryService` owning ExoPlayer and a `MediaLibrarySession`, with media audio focus, becoming-noisy handling, Android Auto media declaration, and foreground-service manifest declarations.
 - [x] Server-bound Media3 `OkHttpDataSource.Factory` with in-memory bearer authorization, exact paired-origin stream validation, disabled redirects, and token-free FLAC/MP3 `MediaItem` construction.
 - [x] Lifecycle-managed Media3 controller, playable Library/Search track rows, lazy notification permission, disconnect cleanup, and persistent buffering/play/pause mini-player.
 - [x] Android Now Playing screen with title/artist/album/format, elapsed/duration/buffer polling, bounded seeking, replay, and back navigation.
@@ -59,7 +59,8 @@ Android first-page library browsing/search, cursor pagination, album/artist/trac
 - [x] Artist detail with play-all and bounded artist-track loading; track detail with metadata, play action, and album/artist navigation.
 - [x] Track-detail Play next and Add to queue actions with bounded Media3 queue insertion.
 - [x] Media3-backed queue screen with current-item highlighting, direct selection, safe removal, long-press drag reorder (shuffle off), shuffle, and repeat Off/All/One.
-- [x] Extended ExoPlayer buffering (2–5 minute window) and longer OkHttp read timeouts for LAN FLAC streams.
+- [x] Extended ExoPlayer buffering (2–5 minute window) with 120-second stream read timeouts; network-loss cancellation applies on devices, not emulators.
+- [x] Android Auto media browse hierarchy for Albums and Artists, paginated children, FTS track search, and album-queue playback through the shared Media3 session.
 
 ## Deferred
 
@@ -91,7 +92,7 @@ Android first-page library browsing/search, cursor pagination, album/artist/trac
 - Browse and search pages default to 50 and reject limits above 200. Artist/album/track ordering uses a stable ID tie-breaker; browse cursors are filter-bound and search cursors are bound to the normalized query.
 - Search requires valid UTF-8 and accepts at most 2,048 input bytes, 16 terms, and 64 Unicode code points per term. User text is converted to quoted literal token prefixes joined with `AND`; raw FTS5 operators are never accepted.
 - Audio is FLAC-first with first-class MP3 support. Version one will serve original files and will not transcode.
-- Android playback must eventually use Media3 `MediaSessionService`, with bearer authorization supplied through the data source rather than URLs.
+- Android playback uses Media3 `MediaLibraryService` with a `MediaLibrarySession`. Bearer authorization is supplied through the data source rather than URLs. The service is exported for Android Auto; tokens must never appear in media IDs, metadata, or stream URLs.
 
 ## Verification status
 
@@ -113,17 +114,22 @@ Android:
 - Build: PASS (`make android-build` / `./gradlew assembleDebug`)
 - Tests: PASS (`make android-test` / `./gradlew testDebugUnitTest`)
 - Static analysis: PASS (`make android-lint` / `./gradlew lintDebug`)
-- Physical-device smoke test: PASS (user-confirmed server connection, library display, and single-track playback). Automated instrumentation, QR-camera behavior, credential restoration after restart, and broader media-control testing remain pending.
+- Physical-device smoke test: PASS (user-confirmed server connection, library display, and single-track playback). Android Auto Desktop Head Unit browse was attempted; its root-query ANR was diagnosed and fixed, but the fix still needs a fresh DHU browse/playback pass. Automated instrumentation, QR-camera behavior, credential restoration after restart, and broader media-control testing remain pending.
 
 ## Recommended next task
 
-Finish broader lock-screen, notification, Bluetooth/headset, and background-playback device validation.
+Finish broader lock-screen, notification, Bluetooth/headset, background-playback, and Android Auto in-car browse/playback device validation.
 
 ## Recent work log
 
 ### 2026-09-04
 
-- Added long-press drag reorder on the Media3 queue screen and extended ExoPlayer buffering for LAN FLAC streams.
+- Refined the Compose phone UI with a cohesive graphite/ice-blue theme, improved typography and system-bar contrast, Material navigation/action/playback icons, a compact progress-aware mini-player, a focused Now Playing layout, richer Home statistics, polished search and media rows, and icon-based queue controls.
+- Restored 120-second FLAC stream read timeouts and skipped emulator network-loss stream cancellation so host playback does not fail with “Playback failed”.
+- Diagnosed a Desktop Head Unit ANR from a captured bugreport: Media3's legacy `onGetRoot` adapter blocked the app main thread while Velin dispatched its static root to an IO coroutine. The root now returns an already-completed future; a regression test asserts synchronous completion. DHU browse still requires a fresh manual validation after reinstall.
+- Fail-fast library/artwork timeouts, cancellable OkHttp, and network-loss cancellation so wireless Android Auto taking Wi-Fi does not stall the phone UI or Auto browse session.
+- Added a launcher icon and documented Android Auto developer “Unknown sources” so sideloaded debug builds can appear in the Auto media-app list.
+- Migrated `PlaybackService` from `MediaSessionService` to `MediaLibraryService` / `MediaLibrarySession` so Android Auto, Compose, and system controls share one player and queue. Browse tree is Albums and Artists only (no fake Recently Played/Added). Android Auto desktop/in-car validation: NOT RUN (no Android Auto host in this environment).
 - Added a Media3-backed queue screen with direct selection/removal plus shuffle and repeat controls.
 - Added album detail navigation, bounded multi-page album loading, server-side disc/track keyset ordering, and complete album queue submission.
 - Added paired-origin-only authenticated artwork loading for Compose and MediaSession metadata, with redirect rejection, response bounds, notification downsampling, and no tokens in URLs.

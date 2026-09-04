@@ -72,7 +72,7 @@ Authentication precedes protected library, artwork, and streaming endpoints so n
 
 ## M10 — Playback — **active**
 
-- **Complete:** AndroidX Media3/ExoPlayer hosted by a non-exported `MediaSessionService`, with audio focus and becoming-noisy handling
+- **Complete:** AndroidX Media3/ExoPlayer hosted by an exported `MediaLibraryService` / `MediaLibrarySession`, with audio focus and becoming-noisy handling
 - **Complete:** server-bound authenticated Media3 OkHttp data source and token-free FLAC/MP3 media-item construction
 - **Complete:** lifecycle-managed Compose `MediaController`, Library/Search track-tap playback, lazy notification permission, and persistent play/pause mini-player
 - **Complete:** Now Playing with elapsed/duration/buffer state, replay, and bounded seeking
@@ -80,8 +80,9 @@ Authentication precedes protected library, artwork, and streaming endpoints so n
 - **Complete:** authenticated token-free artwork metadata with redirect-safe Coil and Media3 loaders
 - **Complete:** album-specific queues in disc/track order, loaded across bounded cursor pages
 - **Complete:** Media3-backed queue display, direct selection, safe item removal, long-press drag reorder (shuffle off), shuffle, repeat Off/All/One, and track-detail Play next / Add to queue
-- **Complete:** extended ExoPlayer buffering (2–5 minute window) and longer OkHttp read timeouts for LAN streams
-- **Partial:** seeking is complete; lock-screen, Bluetooth, headset controls, and long-running background behavior require broader device validation
+- **Complete:** extended ExoPlayer buffering (2–5 minute window) with 120-second stream reads; device network-loss cancellation does not run in the emulator
+- **Complete:** Android Auto media-app declaration and server-backed Albums/Artists browse tree with paginated children, track search, and album-queue playback through the shared session
+- **Partial:** seeking is complete; lock-screen, Bluetooth, headset controls, Android Auto in-car browse/playback, and long-running background behavior require broader device validation
 - **Complete:** authorization headers for original FLAC/MP3 streams
 
 ## M11 — Polish and operations — **planned**
@@ -91,4 +92,4 @@ Authentication precedes protected library, artwork, and streaming endpoints so n
 - backups, deployment, and reverse-proxy documentation
 - GitHub Actions CI for server and Android validation
 
-Explicit v1 non-goals remain transcoding, offline downloads, multiple users, playlists, tag editing, internet metadata/cover fetching, Chromecast, dedicated Android Auto UI, iOS, and recommendations.
+Explicit v1 non-goals remain transcoding, offline downloads, multiple users, playlists, tag editing, internet metadata/cover fetching, Chromecast, a custom Android Auto template UI, Android Automotive OS, iOS, and recommendations.

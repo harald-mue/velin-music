@@ -26,9 +26,10 @@ internal class AuthenticatedArtworkBitmapLoader(
     private val client = OkHttpClient.Builder()
         .followRedirects(false)
         .followSslRedirects(false)
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .callTimeout(45, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(false)
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .callTimeout(20, TimeUnit.SECONDS)
         .addInterceptor(ArtworkAuthorizationInterceptor(policy, credentials.token))
         .build()
     private val executor: ListeningExecutorService = MoreExecutors.listeningDecorator(
@@ -64,9 +65,13 @@ internal class AuthenticatedArtworkBitmapLoader(
         }
     }
 
-    override fun close() {
+    fun cancelInFlight() {
         client.dispatcher.cancelAll()
         client.connectionPool.evictAll()
+    }
+
+    override fun close() {
+        cancelInFlight()
         executor.shutdownNow()
     }
 

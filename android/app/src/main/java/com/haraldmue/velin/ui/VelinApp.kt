@@ -6,17 +6,29 @@ import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.LibraryMusic
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
@@ -27,7 +39,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.haraldmue.velin.data.AndroidKeyStoreCredentialStore
@@ -37,6 +49,8 @@ import com.haraldmue.velin.data.PairingClient
 import com.haraldmue.velin.data.Track
 import com.haraldmue.velin.data.VelinApiClient
 import com.haraldmue.velin.playback.MiniPlayer
+import com.haraldmue.velin.playback.NetworkLossCanceller
+import com.haraldmue.velin.playback.isLikelyEmulator
 import com.haraldmue.velin.playback.NowPlayingScreen
 import com.haraldmue.velin.playback.PlaybackQueueScreen
 import com.haraldmue.velin.playback.PlaybackViewModel
@@ -58,10 +72,10 @@ import com.haraldmue.velin.ui.pairing.PairingViewModelFactory
 
 private data class PlaybackRequest(val tracks: List<Track>, val startIndex: Int)
 
-internal enum class Destination(val label: String, val symbol: String) {
-    Home("Home", "H"),
-    Search("Search", "S"),
-    Library("Library", "L"),
+internal enum class Destination(val label: String) {
+    Home("Home"),
+    Search("Search"),
+    Library("Library"),
 }
 
 @Composable
@@ -104,11 +118,24 @@ private fun ConnectedApp(
     var showNowPlaying by rememberSaveable { mutableStateOf(false) }
     var showPlaybackQueue by rememberSaveable { mutableStateOf(false) }
     val artworkClient = remember(credentials) { ArtworkClient(applicationContext, credentials) }
+    val apiClient = remember(credentials) { VelinApiClient(credentials) }
     DisposableEffect(artworkClient) {
         onDispose(artworkClient::close)
     }
-    val libraryFactory = remember(credentials) {
-        LibraryViewModelFactory(VelinApiClient(credentials))
+    DisposableEffect(apiClient, artworkClient) {
+        if (isLikelyEmulator()) {
+            onDispose { }
+        } else {
+            val canceller = NetworkLossCanceller(applicationContext) {
+                apiClient.cancelInFlight()
+                artworkClient.cancelInFlight()
+            }
+            canceller.start()
+            onDispose(canceller::stop)
+        }
+    }
+    val libraryFactory = remember(apiClient) {
+        LibraryViewModelFactory(apiClient)
     }
     val libraryViewModel: LibraryViewModel = viewModel(
         key = "library-${credentials.deviceId}",
@@ -125,6 +152,7 @@ private fun ConnectedApp(
     val playbackState by playbackViewModel.state
     var pendingPlaybackRequest by remember { mutableStateOf<PlaybackRequest?>(null) }
     var notificationPermissionHandled by rememberSaveable { mutableStateOf(false) }
+    var showAppMenu by remember { mutableStateOf(false) }
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) {
@@ -177,7 +205,17 @@ private fun ConnectedApp(
         libraryViewModel.closeAlbum()
     }
 
+    val backAction: (() -> Unit)? = when {
+        showPlaybackQueue -> ({ showPlaybackQueue = false })
+        showNowPlaying -> ({ showNowPlaying = false })
+        libraryState.selectedTrackId != null -> libraryViewModel::closeTrack
+        libraryState.selectedArtist != null -> libraryViewModel::closeArtist
+        libraryState.selectedAlbum != null -> libraryViewModel::closeAlbum
+        else -> null
+    }
+
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = {
@@ -190,42 +228,47 @@ private fun ConnectedApp(
                             libraryState.selectedAlbum != null -> "Album"
                             else -> "Velin"
                         },
-                        fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.titleLarge,
                     )
                 },
                 navigationIcon = {
-                    when {
-                        showPlaybackQueue -> TextButton(onClick = { showPlaybackQueue = false }) {
-                            Text("Back")
-                        }
-                        showNowPlaying -> TextButton(onClick = { showNowPlaying = false }) {
-                            Text("Back")
-                        }
-                        libraryState.selectedTrackId != null -> TextButton(onClick = libraryViewModel::closeTrack) {
-                            Text("Back")
-                        }
-                        libraryState.selectedArtist != null -> TextButton(onClick = libraryViewModel::closeArtist) {
-                            Text("Back")
-                        }
-                        libraryState.selectedAlbum != null -> TextButton(onClick = libraryViewModel::closeAlbum) {
-                            Text("Back")
+                    backAction?.let { action ->
+                        IconButton(onClick = action) {
+                            Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
                         }
                     }
                 },
                 actions = {
-                    if (!showNowPlaying &&
-                        libraryState.selectedAlbum == null &&
-                        libraryState.selectedArtist == null &&
-                        libraryState.selectedTrackId == null
-                    ) {
-                        TextButton(onClick = libraryViewModel::refresh, enabled = !libraryState.loading) {
-                            Text("Refresh")
+                    if (backAction == null) {
+                        IconButton(
+                            onClick = libraryViewModel::refresh,
+                            enabled = !libraryState.loading,
+                        ) {
+                            Icon(Icons.Rounded.Refresh, contentDescription = "Refresh library")
                         }
-                        TextButton(onClick = ::disconnect) {
-                            Text("Disconnect")
+                        Box {
+                            IconButton(onClick = { showAppMenu = true }) {
+                                Icon(Icons.Rounded.MoreVert, contentDescription = "More options")
+                            }
+                            DropdownMenu(
+                                expanded = showAppMenu,
+                                onDismissRequest = { showAppMenu = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Disconnect from server") },
+                                    onClick = {
+                                        showAppMenu = false
+                                        disconnect()
+                                    },
+                                )
+                            }
                         }
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                ),
             )
         },
         bottomBar = {
@@ -239,8 +282,10 @@ private fun ConnectedApp(
                         onTogglePlayPause = playbackViewModel::togglePlayPause,
                         onNext = playbackViewModel::skipToNext,
                     )
-                    HorizontalDivider()
-                    NavigationBar {
+                    NavigationBar(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        tonalElevation = 0.dp,
+                    ) {
                         Destination.entries.forEach { item ->
                             NavigationBarItem(
                                 selected = destination == item,
@@ -250,7 +295,16 @@ private fun ConnectedApp(
                                     libraryViewModel.closeTrack()
                                     destination = item
                                 },
-                                icon = { Text(item.symbol, fontWeight = FontWeight.Bold) },
+                                icon = {
+                                    Icon(
+                                        imageVector = when (item) {
+                                            Destination.Home -> Icons.Rounded.Home
+                                            Destination.Search -> Icons.Rounded.Search
+                                            Destination.Library -> Icons.Rounded.LibraryMusic
+                                        },
+                                        contentDescription = item.label,
+                                    )
+                                },
                                 label = { Text(item.label) },
                             )
                         }

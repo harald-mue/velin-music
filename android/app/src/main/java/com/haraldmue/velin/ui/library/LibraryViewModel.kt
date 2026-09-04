@@ -13,6 +13,7 @@ import com.haraldmue.velin.data.Track
 import com.haraldmue.velin.data.TrackDetail
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -57,6 +58,7 @@ class LibraryViewModel(
     private val mutableState = MutableStateFlow(LibraryUiState())
     val state: StateFlow<LibraryUiState> = mutableState.asStateFlow()
     private var searchJob: Job? = null
+    private var refreshJob: Job? = null
     private var albumJob: Job? = null
     private var artistJob: Job? = null
     private var trackJob: Job? = null
@@ -66,7 +68,8 @@ class LibraryViewModel(
     }
 
     fun refresh() {
-        viewModelScope.launch {
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
             mutableState.value = mutableState.value.copy(
                 loading = true,
                 error = null,
@@ -90,7 +93,11 @@ class LibraryViewModel(
                     authenticationFailed = error.authenticationFailed,
                 )
             } catch (error: CancellationException) {
-                throw error
+                if (!isActive) throw error
+                mutableState.value = mutableState.value.copy(
+                    loading = false,
+                    error = "Cannot reach the Velin server.",
+                )
             } catch (_: Exception) {
                 mutableState.value = mutableState.value.copy(
                     loading = false,

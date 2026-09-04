@@ -3,22 +3,35 @@ package com.haraldmue.velin.ui.library
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -59,38 +72,95 @@ fun HomeScreen(
             val library = state.library ?: return
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(24.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp),
+                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
                 item {
                     Text("Home", style = MaterialTheme.typography.headlineLarge)
-                    Text(
-                        text = "${credentials.serverName} ${state.status?.version ?: credentials.serverVersion}",
-                        modifier = Modifier.padding(top = 6.dp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    Surface(
+                        modifier = Modifier.padding(top = 14.dp),
+                        shape = MaterialTheme.shapes.large,
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Surface(
+                                modifier = Modifier.size(7.dp),
+                                shape = MaterialTheme.shapes.large,
+                                color = MaterialTheme.colorScheme.primary,
+                            ) {}
+                            Text(
+                                text = "Connected · ${credentials.serverName} ${state.status?.version ?: credentials.serverVersion}",
+                                modifier = Modifier.padding(start = 8.dp),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            )
+                        }
+                    }
                     Text(
                         text = credentials.serverUrl,
+                        modifier = Modifier.padding(top = 8.dp),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 item {
-                    Text("Library overview", style = MaterialTheme.typography.titleLarge)
-                    Text(
-                        "${library.artists.items.size}${moreSuffix(library.artists.hasMore)} artists",
-                        modifier = Modifier.padding(top = 10.dp),
-                    )
-                    Text("${library.albums.items.size}${moreSuffix(library.albums.hasMore)} albums")
-                    Text("${library.tracks.items.size}${moreSuffix(library.tracks.hasMore)} tracks")
+                    Text("Your library", style = MaterialTheme.typography.titleLarge)
+                    Row(
+                        modifier = Modifier.padding(top = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        LibraryStat(
+                            value = "${library.artists.items.size}${moreSuffix(library.artists.hasMore)}",
+                            label = "Artists",
+                            modifier = Modifier.weight(1f),
+                        )
+                        LibraryStat(
+                            value = "${library.albums.items.size}${moreSuffix(library.albums.hasMore)}",
+                            label = "Albums",
+                            modifier = Modifier.weight(1f),
+                        )
+                        LibraryStat(
+                            value = "${library.tracks.items.size}${moreSuffix(library.tracks.hasMore)}",
+                            label = "Tracks",
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
                 if (library.albums.items.isNotEmpty()) {
-                    item { Text("Albums", style = MaterialTheme.typography.titleLarge) }
+                    item {
+                        Text(
+                            text = "Albums",
+                            modifier = Modifier.padding(top = 4.dp),
+                            style = MaterialTheme.typography.titleLarge,
+                        )
+                    }
                     items(library.albums.items.take(8), key = { it.id }) { album ->
                         AlbumRow(album, artworkClient, onClick = { onAlbumClick(album) })
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun LibraryStat(value: String, label: String, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp)) {
+            Text(value, style = MaterialTheme.typography.titleLarge)
+            Text(
+                text = label,
+                modifier = Modifier.padding(top = 2.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -215,13 +285,20 @@ fun SearchScreen(
                 if (it.isBlank()) onSearch("")
             },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("Tracks, artists, or albums") },
+            placeholder = { Text("Tracks, artists, or albums") },
+            leadingIcon = {
+                Icon(Icons.Rounded.Search, contentDescription = null)
+            },
             singleLine = true,
+            shape = MaterialTheme.shapes.large,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { onSearch(query) }),
             trailingIcon = {
-                Button(onClick = { onSearch(query) }, enabled = query.isNotBlank() && !state.searchLoading) {
-                    Text("Search")
+                IconButton(
+                    onClick = { onSearch(query) },
+                    enabled = query.isNotBlank() && !state.searchLoading,
+                ) {
+                    Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = "Search")
                 }
             },
         )
@@ -431,13 +508,15 @@ fun TrackDetailScreen(
                             horizontalArrangement = Arrangement.SpaceEvenly,
                         ) {
                             Button(onClick = { onPlay(track.toTrack()) }) {
-                                Text(if (track.id == currentTrackId) "Play again" else "Play")
+                                Icon(Icons.Rounded.PlayArrow, contentDescription = null)
+                                androidx.compose.foundation.layout.Spacer(Modifier.width(6.dp))
+                                Text(if (track.id == currentTrackId) "Again" else "Play")
                             }
                             TextButton(onClick = { onPlayNext(track.toTrack()) }) {
                                 Text("Play next")
                             }
-                            TextButton(onClick = { onAddToQueue(track.toTrack()) }) {
-                                Text("Add to queue")
+                            IconButton(onClick = { onAddToQueue(track.toTrack()) }) {
+                                Icon(Icons.AutoMirrored.Rounded.QueueMusic, contentDescription = "Add to queue")
                             }
                         }
                     }
@@ -544,6 +623,8 @@ fun AlbumDetailScreen(
                     modifier = Modifier.padding(vertical = 20.dp),
                     enabled = state.albumTracks.isNotEmpty() && !state.albumLoading,
                 ) {
+                    Icon(Icons.Rounded.PlayArrow, contentDescription = null)
+                    androidx.compose.foundation.layout.Spacer(Modifier.width(8.dp))
                     Text("Play album")
                 }
             }
@@ -647,6 +728,24 @@ private fun ArtistRow(artist: Artist, onClick: (() -> Unit)? = null) {
         title = artist.name,
         subtitle = "${artist.albumCount} albums",
         detail = "${artist.trackCount} tracks",
+        leading = {
+            Surface(
+                modifier = Modifier.size(56.dp),
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text(
+                        text = artist.name.firstOrNull()?.uppercase() ?: "V",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                }
+            }
+        },
         onClick = onClick,
     )
 }
@@ -678,8 +777,8 @@ private fun TrackRow(
         onClick = onClick,
         trailing = onDetailClick?.let { detailClick ->
             {
-                TextButton(onClick = detailClick) {
-                    Text("Info")
+                IconButton(onClick = detailClick) {
+                    Icon(Icons.Rounded.Info, contentDescription = "Track information")
                 }
             }
         },
@@ -693,6 +792,7 @@ private fun ItemRow(
     detail: String,
     artworkClient: ArtworkClient? = null,
     artworkUrl: String? = null,
+    leading: (@Composable () -> Unit)? = null,
     onClick: (() -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
@@ -700,35 +800,62 @@ private fun ItemRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = 76.dp)
             .then(interactionModifier)
-            .padding(vertical = 12.dp),
+            .padding(vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        leading?.invoke()
         artworkClient?.let {
             ArtworkImage(
                 artworkClient = it,
                 artworkUrl = artworkUrl,
-                modifier = Modifier.size(56.dp),
+                modifier = Modifier.size(58.dp),
             )
         }
+        val hasLeading = leading != null || artworkClient != null
         Column(
             modifier = Modifier
                 .weight(1f)
-                .padding(start = if (artworkClient == null) 0.dp else 12.dp),
+                .padding(start = if (hasLeading) 13.dp else 0.dp),
         ) {
-            Text(title, fontWeight = FontWeight.Medium)
-            if (subtitle.isNotEmpty()) {
-                Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
             Text(
-                detail,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                text = title,
+                maxLines = 1,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            if (subtitle.isNotEmpty()) {
+                Text(
+                    text = subtitle,
+                    maxLines = 1,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (detail.isNotEmpty()) {
+                Text(
+                    text = detail,
+                    maxLines = 1,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        if (trailing != null) {
+            trailing.invoke()
+        } else if (onClick != null) {
+            Icon(
+                imageVector = Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
             )
         }
-        trailing?.invoke()
     }
-    HorizontalDivider()
+    HorizontalDivider(
+        modifier = Modifier.padding(start = if (artworkClient != null || leading != null) 71.dp else 0.dp),
+        color = MaterialTheme.colorScheme.outlineVariant,
+    )
 }
 
 private fun formatDuration(milliseconds: Long): String {

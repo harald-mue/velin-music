@@ -47,7 +47,7 @@ Velin is intended primarily for self-hosting on a trusted private network. Plain
 - Android pairing QR payloads accept exactly `server_url` and one-time `code`; unexpected fields (including any token field), oversized payloads, malformed URLs, and malformed codes are rejected. Camera permission is requested only when scanning starts and manual pairing remains available.
 - The Android client encrypts device credentials with AES-GCM using a non-exportable key held by Android Keystore before writing ciphertext and IV to private app preferences. Corrupt or undecryptable stored credentials are discarded without logging their contents.
 - The authenticated Android OkHttp client injects the bearer header in-memory, installs no HTTP logging interceptor, bounds JSON response bytes and page sizes, validates public model fields, and maps `401`/`403` to re-pairing without exposing the token.
-- The Android playback service is non-exported. Its Media3 OkHttp data source reads credentials from private Keystore-backed storage, adds authorization headers in memory, rejects non-stream paths and origins other than the paired server, and disables redirects. Controller-provided media URIs never contain tokens.
+- The Android playback service is exported as a Media3 `MediaLibraryService` so Android Auto can bind. Its Media3 OkHttp data source reads credentials from private Keystore-backed storage, adds authorization headers in memory, rejects non-stream paths and origins other than the paired server, and disables redirects. Browse media IDs, metadata, artwork URLs, and controller-provided media URIs never contain tokens.
 
 ### Transport and deployment
 

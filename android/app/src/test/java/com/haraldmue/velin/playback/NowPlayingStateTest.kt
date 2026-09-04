@@ -37,6 +37,35 @@ class NowPlayingStateTest {
     }
 
     @Test
+    fun networkLossIgnoresStartupFlaps() {
+        val network = "wifi"
+        assertEquals(false, shouldCancelForLostNetwork(network, trackedNetwork = null, elapsedSinceStartMs = 5_000))
+        assertEquals(false, shouldCancelForLostNetwork(network, trackedNetwork = network, elapsedSinceStartMs = 100))
+        assertEquals(false, shouldCancelForLostNetwork("other", trackedNetwork = network, elapsedSinceStartMs = 5_000))
+        assertEquals(true, shouldCancelForLostNetwork(network, trackedNetwork = network, elapsedSinceStartMs = 5_000))
+        assertEquals(
+            true,
+            isLikelyEmulator(
+                fingerprint = "generic/sdk_gphone64_x86_64/emu64xa:16/AE3A.240806.005/12281002:userdebug/dev-keys",
+                model = "sdk_gphone64_x86_64",
+                hardware = "ranchu",
+                product = "sdk_gphone64_x86_64",
+                manufacturer = "Google",
+            ),
+        )
+        assertEquals(
+            false,
+            isLikelyEmulator(
+                fingerprint = "google/shiba/shiba:16/BP2A.250605.031.A3/123:user/release-keys",
+                model = "Pixel 8",
+                hardware = "shiba",
+                product = "shiba",
+                manufacturer = "Google",
+            ),
+        )
+    }
+
+    @Test
     fun queueMoveRejectsInvalidIndices() {
         assertEquals(false, isValidQueueMove(0, 0, 3))
         assertEquals(false, isValidQueueMove(-1, 1, 3))

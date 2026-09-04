@@ -110,7 +110,7 @@ Collection responses use this shape:
 
 The initial search endpoint returns track models. Search input is treated as text, never raw FTS5 syntax. Punctuation separates Unicode letter/number terms; terms become quoted prefix matches joined with `AND`. Input must be valid UTF-8 and is limited to 2,048 bytes, 16 terms, and 64 Unicode code points per term. Results rank title matches above artist, album, and genre matches, then use title and opaque ID as deterministic tie-breakers.
 
-Detail responses expose metadata and opaque related IDs, not indexed roots or source paths. Track metadata uses lowercase `flac` or `mp3` format values and may include duration in milliseconds, sample rate, bit depth when available, channel count, genre, date, disc/track positions, and related artist/album/cover IDs.
+Detail responses expose metadata and opaque related IDs, not indexed roots or source paths. Track metadata uses lowercase `flac` or `mp3` format values and may include duration in milliseconds, sample rate, bit depth when available, channel count, genre, date, disc/track positions, and related artist/album/cover IDs. There is no playlist or saved-queue HTTP API; the Android client stores one optional queue snapshot locally and re-resolves track IDs through `GET /api/v1/tracks/{id}`.
 
 ## Artwork and streaming
 

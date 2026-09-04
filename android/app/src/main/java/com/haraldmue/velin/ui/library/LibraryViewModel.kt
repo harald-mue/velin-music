@@ -13,12 +13,13 @@ import com.haraldmue.velin.data.Track
 import com.haraldmue.velin.data.TrackDetail
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 enum class LibrarySection {
@@ -59,6 +60,7 @@ class LibraryViewModel(
     val state: StateFlow<LibraryUiState> = mutableState.asStateFlow()
     private var searchJob: Job? = null
     private var refreshJob: Job? = null
+    private var refreshGeneration = 0
     private var albumJob: Job? = null
     private var artistJob: Job? = null
     private var trackJob: Job? = null
@@ -69,40 +71,49 @@ class LibraryViewModel(
 
     fun refresh() {
         refreshJob?.cancel()
+        val generation = ++refreshGeneration
         refreshJob = viewModelScope.launch {
-            mutableState.value = mutableState.value.copy(
-                loading = true,
-                error = null,
-                authenticationFailed = false,
-            )
+            mutableState.update {
+                it.copy(
+                    loading = true,
+                    error = null,
+                    authenticationFailed = false,
+                )
+            }
             try {
                 val (status, library) = coroutineScope {
                     val statusRequest = async { gateway.status() }
                     val libraryRequest = async { gateway.loadLibrary() }
                     statusRequest.await() to libraryRequest.await()
                 }
-                mutableState.value = mutableState.value.copy(
-                    loading = false,
-                    status = status,
-                    library = library,
-                )
-            } catch (error: ApiException) {
-                mutableState.value = mutableState.value.copy(
-                    loading = false,
-                    error = error.message ?: "Could not load the library.",
-                    authenticationFailed = error.authenticationFailed,
-                )
+                ensureActive()
+                if (generation != refreshGeneration) return@launch
+                mutableState.update {
+                    it.copy(
+                        loading = false,
+                        status = status,
+                        library = library,
+                    )
+                }
             } catch (error: CancellationException) {
-                if (!isActive) throw error
-                mutableState.value = mutableState.value.copy(
-                    loading = false,
-                    error = "Cannot reach the Velin server.",
-                )
+                throw error
+            } catch (error: ApiException) {
+                if (generation != refreshGeneration) return@launch
+                mutableState.update {
+                    it.copy(
+                        loading = false,
+                        error = error.message ?: "Could not load the library.",
+                        authenticationFailed = error.authenticationFailed,
+                    )
+                }
             } catch (_: Exception) {
-                mutableState.value = mutableState.value.copy(
-                    loading = false,
-                    error = "Could not load the library.",
-                )
+                if (generation != refreshGeneration) return@launch
+                mutableState.update {
+                    it.copy(
+                        loading = false,
+                        error = "Could not load the library.",
+                    )
+                }
             }
         }
     }

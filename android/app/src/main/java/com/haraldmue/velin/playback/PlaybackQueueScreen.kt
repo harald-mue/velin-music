@@ -2,6 +2,7 @@ package com.haraldmue.velin.playback
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -13,15 +14,20 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ClearAll
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.DragHandle
+import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Repeat
+import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -51,54 +57,66 @@ fun PlaybackQueueScreen(
     onMove: (Int, Int) -> Unit,
     onToggleShuffle: () -> Unit,
     onCycleRepeat: () -> Unit,
+    onClear: () -> Unit,
+    onSave: () -> Unit,
+    onLoad: () -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(20.dp),
     ) {
         item {
-            Text("Up next", style = MaterialTheme.typography.headlineLarge)
-            Text(
-                text = "${state.queue.size} tracks",
-                modifier = Modifier.padding(top = 4.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (state.queue.size > 1 && !state.canReorderQueue) {
-                Text(
-                    text = if (state.shuffleEnabled) {
-                        "Turn off shuffle to reorder the queue."
-                    } else {
-                        "Queue reordering is unavailable."
-                    },
-                    modifier = Modifier.padding(top = 8.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else if (state.canReorderQueue) {
-                Text(
-                    text = "Long-press a track and drag to reorder.",
-                    modifier = Modifier.padding(top = 8.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            if (state.queueBusy) {
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.outlineVariant,
                 )
             }
             Row(
-                modifier = Modifier.padding(vertical = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(bottom = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 FilterChip(
                     selected = state.shuffleEnabled,
                     onClick = onToggleShuffle,
-                    enabled = state.queue.size > 1,
+                    enabled = state.queue.size > 1 && !state.queueBusy,
                     label = { Text("Shuffle") },
                     leadingIcon = { Icon(Icons.Rounded.Shuffle, contentDescription = null) },
                 )
                 FilterChip(
                     selected = state.repeatMode != PlaybackRepeatMode.Off,
                     onClick = onCycleRepeat,
-                    enabled = state.queue.isNotEmpty(),
+                    enabled = state.queue.isNotEmpty() && !state.queueBusy,
                     label = { Text("Repeat ${repeatModeLabel(state.repeatMode)}") },
                     leadingIcon = { Icon(Icons.Rounded.Repeat, contentDescription = null) },
+                )
+                FilterChip(
+                    selected = false,
+                    onClick = onSave,
+                    enabled = state.canSaveQueue && !state.queueBusy,
+                    label = { Text("Save") },
+                    leadingIcon = { Icon(Icons.Rounded.Save, contentDescription = "Save queue") },
+                )
+                FilterChip(
+                    selected = false,
+                    onClick = onLoad,
+                    enabled = state.canLoadQueue && !state.queueBusy,
+                    label = { Text("Load") },
+                    leadingIcon = { Icon(Icons.Rounded.FolderOpen, contentDescription = "Load queue") },
+                )
+                FilterChip(
+                    selected = false,
+                    onClick = onClear,
+                    enabled = state.queue.isNotEmpty() && !state.queueBusy,
+                    label = { Text("Clear") },
+                    leadingIcon = { Icon(Icons.Rounded.ClearAll, contentDescription = "Clear queue") },
                 )
             }
         }
@@ -119,8 +137,8 @@ fun PlaybackQueueScreen(
                     lastIndex = state.queue.lastIndex,
                     item = item,
                     isCurrent = index == state.queueIndex,
-                    canReorder = state.canReorderQueue,
-                    canRemove = state.canEditQueue,
+                    canReorder = state.canReorderQueue && item.available,
+                    canRemove = item.available.not() || state.canEditQueue,
                     artworkClient = artworkClient,
                     onSelect = { onSelect(index) },
                     onRemove = { onRemove(index) },
@@ -184,17 +202,17 @@ private fun ReorderableQueueRow(
                     Modifier
                 },
             )
-            .clickable(enabled = !dragging, onClick = onSelect)
+            .clickable(enabled = !dragging && item.available, onClick = onSelect)
             .padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Icon(
             imageVector = Icons.Rounded.DragHandle,
-            contentDescription = if (canReorder) "Drag to reorder" else null,
+            contentDescription = if (canReorder && item.available) "Drag to reorder" else null,
             modifier = Modifier.padding(end = 4.dp),
             tint = if (canReorder) {
-                MaterialTheme.colorScheme.onSurfaceVariant
+                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (item.available) 1f else 0.4f)
             } else {
                 MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
             },
@@ -210,21 +228,24 @@ private fun ReorderableQueueRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                color = if (isCurrent) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurface
+                color = when {
+                    !item.available -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                    isCurrent -> MaterialTheme.colorScheme.primary
+                    else -> MaterialTheme.colorScheme.onSurface
                 },
             )
-            item.artist?.takeIf(String::isNotEmpty)?.let { artist ->
-                Text(
-                    text = artist,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            Text(
+                text = when {
+                    !item.available -> "Unavailable"
+                    else -> item.artist.orEmpty()
+                },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                    alpha = if (item.available) 1f else 0.45f,
+                ),
+            )
         }
         IconButton(onClick = onRemove, enabled = canRemove) {
             Icon(Icons.Rounded.DeleteOutline, contentDescription = "Remove from queue")

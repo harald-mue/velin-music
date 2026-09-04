@@ -437,3 +437,21 @@ Migrate the existing `PlaybackService` to Media3 `MediaLibraryService` with a `M
 ### Consequences
 
 The playback service is exported. Tokens must never appear in media IDs, metadata, or URLs; authorization remains an in-memory OkHttp/Media3 header. Recently Played/Added are omitted until the server provides those collections. Playback resumption after process death remains unimplemented. Android Automotive OS is still out of scope.
+
+## ADR-021 — One device-local saved playback queue
+
+Status: Accepted
+
+Date: 2026-09-05
+
+### Context
+
+The phone Queue tab needed a way to restore a recent playback list after clearing it or leaving the app. Named server playlists are a v1 non-goal. Missing library tracks after a later scan must not crash Load.
+
+### Decision
+
+Persist a single saved-queue JSON file in the app’s private files directory, keyed by opaque device ID. Store only opaque track IDs plus previously seen title/artist text. Load resolves each ID through the authenticated track API; HTTP 404 rows stay visible and greyed and cannot start playback. Save writes only currently available IDs and is enabled when that ID list differs from the last successful save. Clear empties the live Media3 queue without deleting the slot.
+
+### Consequences
+
+This is not a playlist library: there is one slot per paired device on that phone, no names, and no server copy. Unavailable rows disappear from the slot on the next save. Tokens never enter the file.

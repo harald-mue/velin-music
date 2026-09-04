@@ -19,6 +19,8 @@ Velin uses SQLite with FTS5 and explicit schema migrations. The database is an i
 
 The baseline tables and FTS5 table are created by `server/migrations/001_initial_schema.sql`; scan reconciliation state is added by `002_scan_seen_tracks.sql`; browse ordering and relationship indexes are added by `003_query_indexes.sql`; the single-running-scan invariant is enforced by `004_running_scan_guard.sql`; administrator credentials and sessions are added by `005_admin_auth.sql`. Future schema changes must use new immutable migrations. Internal browse and FTS search repositories provide bounded keyset pagination; protected library HTTP handlers remain planned.
 
+The Android client’s one saved playback queue is a private on-device JSON file, not a SQLite table and not a server playlist.
+
 ## Relationships and constraints
 
 - Every track belongs to one library root and has a server-generated opaque ID.

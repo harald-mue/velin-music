@@ -2,23 +2,23 @@ package com.haraldmue.velin.playback
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.RepeatOne
 import androidx.compose.material.icons.rounded.Replay
@@ -30,13 +30,10 @@ import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -44,12 +41,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.haraldmue.velin.data.ArtworkClient
 import com.haraldmue.velin.ui.ArtworkImage
+import com.haraldmue.velin.ui.layout.isLandscape
+import com.haraldmue.velin.ui.layout.usesSplitDetail
+import com.haraldmue.velin.ui.layout.velinWidthClass
 
 @Composable
 fun NowPlayingScreen(
@@ -63,48 +62,105 @@ fun NowPlayingScreen(
     onToggleShuffle: () -> Unit,
     onCycleRepeat: () -> Unit,
 ) {
-    val duration = state.durationMs
-    var dragging by remember(state.mediaId) { mutableStateOf(false) }
-    var sliderFraction by remember(state.mediaId) { mutableFloatStateOf(0f) }
-    val positionFraction = progressFraction(state.positionMs, duration)
-
-    LaunchedEffect(positionFraction, dragging) {
-        if (!dragging) sliderFraction = positionFraction
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp, vertical = 12.dp)
-            .animateContentSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        ArtworkImage(
-            artworkClient = artworkClient,
-            artworkUrl = state.artworkUrl,
+    val split = usesSplitDetail(velinWidthClass(), isLandscape())
+    if (split) {
+        Row(
             modifier = Modifier
-                .fillMaxWidth(0.64f)
-                .widthIn(max = 360.dp)
-                .aspectRatio(1f)
-                .shadow(18.dp, MaterialTheme.shapes.large),
+                .fillMaxSize()
+                .padding(horizontal = 24.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(32.dp),
+        ) {
+            ArtworkImage(
+                artworkClient = artworkClient,
+                artworkUrl = state.artworkUrl,
+                modifier = Modifier
+                    .fillMaxHeight(0.82f)
+                    .aspectRatio(1f)
+                    .shadow(16.dp, MaterialTheme.shapes.large),
+            )
+            NowPlayingControls(
+                state = state,
+                onPrevious = onPrevious,
+                onTogglePlayPause = onTogglePlayPause,
+                onNext = onNext,
+                onSeek = onSeek,
+                onOpenQueue = onOpenQueue,
+                onToggleShuffle = onToggleShuffle,
+                onCycleRepeat = onCycleRepeat,
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState()),
+                centered = false,
+            )
+        }
+    } else {
+        NowPlayingControls(
+            state = state,
+            onPrevious = onPrevious,
+            onTogglePlayPause = onTogglePlayPause,
+            onNext = onNext,
+            onSeek = onSeek,
+            onOpenQueue = onOpenQueue,
+            onToggleShuffle = onToggleShuffle,
+            onCycleRepeat = onCycleRepeat,
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 8.dp)
+                .animateContentSize(),
+            centered = true,
+            artwork = {
+                ArtworkImage(
+                    artworkClient = artworkClient,
+                    artworkUrl = state.artworkUrl,
+                    modifier = Modifier
+                        .fillMaxWidth(0.62f)
+                        .widthIn(max = 280.dp)
+                        .aspectRatio(1f)
+                        .shadow(16.dp, MaterialTheme.shapes.large),
+                )
+            },
         )
+    }
+}
+
+@Composable
+private fun NowPlayingControls(
+    state: PlaybackUiState,
+    onPrevious: () -> Unit,
+    onTogglePlayPause: () -> Unit,
+    onNext: () -> Unit,
+    onSeek: (Long) -> Unit,
+    onOpenQueue: () -> Unit,
+    onToggleShuffle: () -> Unit,
+    onCycleRepeat: () -> Unit,
+    modifier: Modifier,
+    centered: Boolean,
+    artwork: (@Composable () -> Unit)? = null,
+) {
+    var scrubPositionMs by remember { mutableStateOf<Long?>(null) }
+    Column(
+        modifier = modifier,
+        horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start,
+    ) {
+        artwork?.invoke()
         Text(
             text = state.title ?: "Nothing playing",
-            modifier = Modifier.padding(top = 28.dp),
+            modifier = Modifier.padding(top = if (artwork != null) 20.dp else 0.dp),
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
+            textAlign = if (centered) TextAlign.Center else TextAlign.Start,
             style = MaterialTheme.typography.headlineMedium,
         )
         val subtitle = listOfNotNull(state.artist, state.album).joinToString(" · ")
         if (subtitle.isNotEmpty()) {
             Text(
                 text = subtitle,
-                modifier = Modifier.padding(top = 6.dp),
+                modifier = Modifier.padding(top = 4.dp),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
+                textAlign = if (centered) TextAlign.Center else TextAlign.Start,
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -114,48 +170,37 @@ fun NowPlayingScreen(
             if (state.queueSize > 1) "${state.queueIndex + 1} of ${state.queueSize}" else null,
         ).joinToString(" · ")
         if (playbackDetail.isNotEmpty()) {
-            Surface(
-                modifier = Modifier.padding(top = 12.dp),
-                shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
-            ) {
-                Text(
-                    text = playbackDetail,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                )
-            }
+            Text(
+                text = playbackDetail,
+                modifier = Modifier.padding(top = 8.dp),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
-        Spacer(modifier = Modifier.height(18.dp))
-        Slider(
-            value = sliderFraction,
-            onValueChange = {
-                dragging = true
-                sliderFraction = it
-            },
-            onValueChangeFinished = {
-                duration?.let { onSeek((sliderFraction * it).toLong()) }
-                dragging = false
-            },
-            modifier = Modifier.fillMaxWidth(),
+        Spacer(modifier = Modifier.height(16.dp))
+        PlaybackSeekBar(
+            positionMs = state.positionMs,
+            bufferedPositionMs = state.bufferedPositionMs,
+            durationMs = state.durationMs,
             enabled = state.canSeek,
-            valueRange = 0f..1f,
+            onSeek = onSeek,
+            onScrubChange = { scrubPositionMs = it },
+            activeColor = MaterialTheme.colorScheme.primary,
+            bufferedColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.22f),
+            trackColor = MaterialTheme.colorScheme.outlineVariant,
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
-                formatPlaybackTime(
-                    if (dragging && duration != null) (sliderFraction * duration).toLong() else state.positionMs,
-                ),
+                formatPlaybackTime(scrubPositionMs ?: state.positionMs),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                duration?.let(::formatPlaybackTime) ?: "--:--",
+                state.durationMs?.let(::formatPlaybackTime) ?: "--:--",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -164,21 +209,21 @@ fun NowPlayingScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 16.dp),
+                .padding(top = 8.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onPrevious, enabled = state.hasPrevious, modifier = Modifier.size(56.dp)) {
-                Icon(Icons.Rounded.SkipPrevious, contentDescription = "Previous track", modifier = Modifier.size(34.dp))
+                Icon(Icons.Rounded.SkipPrevious, contentDescription = "Previous track", modifier = Modifier.size(32.dp))
             }
             FilledIconButton(
                 onClick = onTogglePlayPause,
                 enabled = state.mediaId != null && !state.isBuffering,
-                modifier = Modifier.size(72.dp),
+                modifier = Modifier.size(68.dp),
             ) {
                 if (state.isBuffering) {
                     CircularProgressIndicator(
-                        modifier = Modifier.size(28.dp),
+                        modifier = Modifier.size(26.dp),
                         strokeWidth = 2.5.dp,
                         color = MaterialTheme.colorScheme.onPrimary,
                     )
@@ -194,19 +239,19 @@ fun NowPlayingScreen(
                             state.isEnded -> "Replay"
                             else -> "Play"
                         },
-                        modifier = Modifier.size(38.dp),
+                        modifier = Modifier.size(34.dp),
                     )
                 }
             }
             IconButton(onClick = onNext, enabled = state.hasNext, modifier = Modifier.size(56.dp)) {
-                Icon(Icons.Rounded.SkipNext, contentDescription = "Next track", modifier = Modifier.size(34.dp))
+                Icon(Icons.Rounded.SkipNext, contentDescription = "Next track", modifier = Modifier.size(32.dp))
             }
         }
 
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 12.dp),
+                .padding(top = 4.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
             PlaybackOption(

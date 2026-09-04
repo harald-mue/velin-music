@@ -10,7 +10,7 @@ Velin is **FLAC-first with first-class MP3 support**. Both formats are read-only
 
 ## Status
 
-The repository contains a compilable Go server and a native Kotlin/Jetpack Compose Android client. The server provides authenticated library browsing, search, artwork, original-format streaming, administration, safe incremental indexing, optional startup scans, and scheduled scans. The Android app provides QR/manual pairing with Android Keystore-backed credentials and authenticated Home, Search, and Library screens; playback uses a shared Media3 `MediaLibraryService` for the phone UI, system controls, and Android Auto media browsing.
+The repository contains a compilable Go server and a native Kotlin/Jetpack Compose Android client. The server provides authenticated library browsing, search, artwork, original-format streaming, administration, safe incremental indexing, optional startup scans, and scheduled scans. The Android app provides QR/manual pairing with Android Keystore-backed credentials and authenticated Home, Queue, and Library screens (search lives in Library). The Queue tab can Clear the live list and Save/Load one device-private slot of opaque track IDs. Playback uses a shared Media3 `MediaLibraryService` for the phone UI, system controls, and Android Auto media browsing.
 
 Current state and the next handoff are maintained in [`docs/PROGRESS.md`](docs/PROGRESS.md).
 

@@ -16,7 +16,7 @@ Dark mode is the primary mode. Use near-black graphite surfaces rather than pure
 
 Avoid excessive rounded cards, glassmorphism, generic SaaS dashboard styling, and ornamental gradients. Prefer hierarchy, spacing, typography, dividers, surfaces, subtle elevation, and precise geometry.
 
-The implemented phone theme uses near-black graphite backgrounds, restrained ice-blue accents, lightweight display headings, denser semibold content labels, softly rounded artwork, and tonal surfaces only where grouping benefits from them. System bars remain dark with light icons so edge-to-edge content retains clear contrast.
+The implemented phone theme uses the original near-black graphite `#111214` for the window, scaffold, top bar, mini-player, and navigation chrome. Material surface-container tokens share that same graphite so elevation overlays cannot introduce navy or blue bands. Ice-blue is reserved for active controls, seek progress, and the current track.
 
 ## Iconography and mark
 
@@ -27,10 +27,12 @@ Velin's eventual icon family is custom, monochrome, geometric, simple, recogniza
 Initial primary navigation:
 
 ```text
-Home    Search    Library
+Home    Queue    Library
 ```
 
-Show a persistent mini-player only while playback is active. Keep navigation shallow and make server identity and privacy state easy to find.
+Library contains Albums, Artists, Tracks, and Search. Queue is a primary destination for the current Media3 playback queue, with Clear plus one device-local Save/Load slot. Missing tracks from a loaded queue appear greyed and are dropped on the next save. Show a persistent mini-player only while playback is active. Server identity lives in the top-bar status indicator and an information dialog, not as a full-width Home banner.
+
+On compact portrait screens use a bottom navigation bar. On landscape and expanded widths use a navigation rail and split album, artist, track, and Now Playing layouts so artwork and lists sit side by side.
 
 ## Core screens
 
@@ -38,7 +40,7 @@ Plan for onboarding/pairing, home, albums, album detail, artists, artist detail,
 
 ## Playback and audio quality
 
-Playback belongs in a background `MediaLibraryService`, not an Activity. The phone UI uses the Velin design system. Android Auto uses the host-provided driver-safe media interface; Velin supplies hierarchy, metadata, artwork, and playback controls rather than a custom automotive layout. The UI may present useful technical information such as `FLAC`, `MP3`, `24-bit`, `96 kHz`, or `2 channels`, but normal playback controls should remain uncluttered. Original-format streaming and seeking are part of the experience.
+Playback belongs in a background `MediaLibraryService`, not an Activity. The phone UI uses the Velin design system. Album and artist details expose Play (replace the queue) and Add to queue (append the bounded track list). Android Auto uses the host-provided driver-safe media interface; Velin supplies hierarchy, metadata, artwork, and playback controls rather than a custom automotive layout. The UI may present useful technical information such as `FLAC`, `MP3`, `24-bit`, `96 kHz`, or `2 channels`, but normal playback controls should remain uncluttered. Original-format streaming and seeking are part of the experience.
 
 ## Accessibility
 

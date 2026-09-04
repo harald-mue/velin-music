@@ -25,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -44,8 +45,9 @@ fun MiniPlayer(
 
     Surface(
         modifier = Modifier.clickable(onClick = onOpen),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        tonalElevation = 6.dp,
+        color = MiniPlayerBackground,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
     ) {
         Column {
             Box(
@@ -130,3 +132,5 @@ fun MiniPlayer(
         }
     }
 }
+
+private val MiniPlayerBackground = Color(0xFF080809)

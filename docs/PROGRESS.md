@@ -1,16 +1,16 @@
 # Velin Development Progress
 
-Last updated: 2026-09-04
+Last updated: 2026-09-05
 
 ## Current status
 
-The Go executable provides storage, indexing, authentication, administration, protected library APIs, artwork, and original-format streaming. The native Android project builds with Kotlin, Compose, and API 37 and provides a refined graphite/ice-blue visual system and primary navigation shell.
+The Go executable provides storage, indexing, authentication, administration, protected library APIs, artwork, and original-format streaming. The native Android project builds with Kotlin, Compose, and API 37 and provides a graphite visual system with Home/Queue/Library navigation, in-library search, and adaptive portrait/landscape layouts.
 
-Android first-page library browsing/search, cursor pagination, album/artist/track details, bounded visible-result/album queues, queue reordering, and track-detail enqueue actions are wired through Media3, including authenticated artwork, Now Playing, seeking, automatic advance, previous/next, queue inspection/removal, shuffle, and repeat. Playback is owned by an exported `MediaLibraryService` that also exposes an Android Auto media library (Albums and Artists).
+Android first-page library browsing/search, cursor pagination, album/artist/track details, bounded visible-result/album queues, album/artist add-to-queue, queue reordering, a device-local saved-queue slot, and track-detail enqueue actions are wired through Media3, including authenticated artwork, Now Playing, seeking, automatic advance, previous/next, queue inspection/removal, shuffle, and repeat. Playback is owned by an exported `MediaLibraryService` that also exposes an Android Auto media library (Albums and Artists).
 
 ## Current milestone
 
-**M10 — Playback** (active; authenticated queues, artwork, mini-player, Now Playing, seeking, previous/next, queue inspection/removal/reordering, shuffle, repeat, enqueue, and Android Auto media-library browsing are complete; broader device and in-car validation remains).
+**M10 — Playback** (active; authenticated queues, artwork, mini-player, Now Playing, seeking, previous/next, queue inspection/removal/reordering, local Save/Load, shuffle, repeat, enqueue, and Android Auto media-library browsing are complete; broader device and in-car validation remains).
 
 ## Completed
 
@@ -56,9 +56,9 @@ Android first-page library browsing/search, cursor pagination, album/artist/trac
 - [x] Bounded Library/Search result queues with selected start index, automatic Media3 advance, queue-position state, and previous/next controls.
 - [x] Authenticated Coil artwork for album/track rows, mini-player, and Now Playing plus a bounded/downsampled Media3 bitmap loader for notifications and lock-screen metadata.
 - [x] Cursor-based load-more for library artists/albums/tracks and search results.
-- [x] Artist detail with play-all and bounded artist-track loading; track detail with metadata, play action, and album/artist navigation.
-- [x] Track-detail Play next and Add to queue actions with bounded Media3 queue insertion.
-- [x] Media3-backed queue screen with current-item highlighting, direct selection, safe removal, long-press drag reorder (shuffle off), shuffle, and repeat Off/All/One.
+- [x] Artist detail with play-all, add-to-queue, and bounded artist-track loading; track detail with metadata, play action, and album/artist navigation.
+- [x] Track-detail Play next and Add to queue actions, plus album/artist Add to queue, with bounded Media3 queue insertion.
+- [x] Media3-backed queue screen with current-item highlighting, direct selection, safe removal, long-press drag reorder (shuffle off), shuffle, repeat Off/All/One, Clear, and one device-local Save/Load slot.
 - [x] Extended ExoPlayer buffering (2–5 minute window) with 120-second stream read timeouts; network-loss cancellation applies on devices, not emulators.
 - [x] Android Auto media browse hierarchy for Albums and Artists, paginated children, FTS track search, and album-queue playback through the shared Media3 session.
 
@@ -122,8 +122,19 @@ Finish broader lock-screen, notification, Bluetooth/headset, background-playback
 
 ## Recent work log
 
+### 2026-09-05
+
+- Album and artist detail screens can append their bounded track lists to the current queue as well as replace it with Play album / Play artist.
+- Queue Save/Load is a single private JSON slot per paired device: Load greys missing library IDs, Save writes only available IDs, and file I/O runs off the main thread. Documented as ADR-021; playlists remain a v1 non-goal.
+
 ### 2026-09-04
 
+- Queue chips now include Save, Load, and Clear. Save writes one private JSON slot of opaque track IDs plus titles; Load resolves IDs against the library, greys missing tracks, and omits them on the next save. Save stays disabled until the playable ID list differs from the last saved slot.
+- Library refresh now keeps only the latest in-flight result, stays tappable, and shows an indeterminate progress bar while the library is syncing.
+
+- Gave Home a three-column library overview, a near-black mini-player strip, and a top-bar refresh control beside server info.
+- Added a Queue primary destination between Home and Library, and pinned every Material surface-container token to graphite `#111214` so the mini-player and navigation chrome no longer pick up blue elevation tints.
+- Tightened the phone UI: restored graphite `#111214`, moved search into Library, compact Home album grid, centered album headers, custom seek bar, top-bar server status/info dialog, and width-based landscape/rail layouts.
 - Refined the Compose phone UI with a cohesive graphite/ice-blue theme, improved typography and system-bar contrast, Material navigation/action/playback icons, a compact progress-aware mini-player, a focused Now Playing layout, richer Home statistics, polished search and media rows, and icon-based queue controls.
 - Restored 120-second FLAC stream read timeouts and skipped emulator network-loss stream cancellation so host playback does not fail with “Playback failed”.
 - Diagnosed a Desktop Head Unit ANR from a captured bugreport: Media3's legacy `onGetRoot` adapter blocked the app main thread while Velin dispatched its static root to an IO coroutine. The root now returns an already-completed future; a regression test asserts synchronous completion. DHU browse still requires a fresh manual validation after reinstall.

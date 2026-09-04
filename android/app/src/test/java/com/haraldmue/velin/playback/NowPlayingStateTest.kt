@@ -26,6 +26,8 @@ class NowPlayingStateTest {
         assertEquals(true, canEnqueue(1, 1))
         assertEquals(true, canEnqueue(499, 1))
         assertEquals(false, canEnqueue(500, 1))
+        assertEquals(true, canEnqueue(0, 32))
+        assertEquals(false, canEnqueue(480, 21))
         assertEquals(false, canEnqueue(10, 0))
     }
 

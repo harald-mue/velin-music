@@ -60,7 +60,7 @@ Documentation must describe reality. Do not leave architecture documents describ
 
 ## Scope and non-goals
 
-Do not add cloud services, PostgreSQL, Redis, Elasticsearch, Kubernetes, microservices, or a message broker without a demonstrated requirement and a documented decision. Version-one non-goals include transcoding, offline downloads, multiple users, playlists, tag editing, internet metadata/cover fetching, Chromecast, iOS, and recommendation features.
+Do not add cloud services, PostgreSQL, Redis, Elasticsearch, Kubernetes, microservices, or a message broker without a demonstrated requirement and a documented decision. Version-one non-goals include transcoding, offline downloads, multiple users, playlists, tag editing, internet metadata/cover fetching, Chromecast, iOS, and recommendation features. The Android app’s one local saved-queue file is not a playlist feature.
 
 ## Useful commands
 

@@ -1,0 +1,56 @@
+{{define "scan_detail.html"}}
+{{template "layout" .}}
+{{end}}
+
+{{define "scan_detail-body"}}
+<section class="panel">
+	<p><a href="/admin/roots">← Back to library</a></p>
+	<h1>Scan details</h1>
+	<p class="lead">Root-relative file paths are shown only in this administration UI.</p>
+
+	<table class="meta-table">
+		<tbody>
+			<tr><th>Scan ID</th><td class="mono">{{.Scan.ID}}</td></tr>
+			<tr><th>Root</th><td class="mono">{{.Scan.RootID}}</td></tr>
+			<tr><th>Status</th><td><span class="status-{{.Scan.Status}}">{{.Scan.Status}}</span></td></tr>
+			<tr><th>Started</th><td class="muted">{{.Scan.StartedAt}}</td></tr>
+			<tr><th>Finished</th><td class="muted">{{if .Scan.FinishedAt}}{{.Scan.FinishedAt}}{{else}}—{{end}}</td></tr>
+			<tr><th>Files seen</th><td>{{.Scan.FilesSeen}}</td></tr>
+			<tr><th>Files indexed</th><td>{{.Scan.FilesIndexed}}</td></tr>
+			<tr><th>Files removed</th><td>{{.Scan.FilesRemoved}}</td></tr>
+			<tr><th>Errors</th><td>{{.ScanErrorTotal}}</td></tr>
+		</tbody>
+	</table>
+</section>
+
+<section class="panel" style="margin-top:1.5rem">
+	<h2>Scan errors</h2>
+	{{if .ScanErrors}}
+	{{if lt (len .ScanErrors) .ScanErrorTotal}}
+	<p class="muted">Showing the first {{len .ScanErrors}} of {{.ScanErrorTotal}} errors.</p>
+	{{end}}
+	<table>
+		<thead>
+			<tr>
+				<th>Source</th>
+				<th>Code</th>
+				<th>Message</th>
+				<th>Recorded</th>
+			</tr>
+		</thead>
+		<tbody>
+			{{range .ScanErrors}}
+			<tr>
+				<td class="mono">{{if .SourceName}}{{.SourceName}}{{else}}—{{end}}</td>
+				<td class="mono">{{.ErrorCode}}</td>
+				<td>{{.Message}}</td>
+				<td class="muted">{{.CreatedAt}}</td>
+			</tr>
+			{{end}}
+		</tbody>
+	</table>
+	{{else}}
+	<p class="muted">No errors were recorded for this scan.</p>
+	{{end}}
+</section>
+{{end}}

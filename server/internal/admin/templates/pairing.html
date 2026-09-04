@@ -1,0 +1,22 @@
+{{define "pairing.html"}}
+{{template "layout" .}}
+{{end}}
+
+{{define "pairing-body"}}
+<section class="panel">
+	<h1>Pairing</h1>
+	<p class="lead">Create a one-time code for the Android app. Codes expire after about five minutes.</p>
+	{{if .Error}}<div class="error">{{.Error}}</div>{{end}}
+	<form method="post" action="/admin/pairing">
+		<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+		<label for="device_name">Device name</label>
+		<input id="device_name" name="device_name" type="text" required>
+		<label for="server_url">Server URL</label>
+		<input id="server_url" name="server_url" type="url" value="{{.ServerURL}}" placeholder="http://velin.local:8080">
+		<p class="muted">Used in the QR payload. Defaults to <code>VELIN_PUBLIC_URL</code> when configured.</p>
+		<div class="actions">
+			<button type="submit" class="primary">Create pairing code</button>
+		</div>
+	</form>
+</section>
+{{end}}

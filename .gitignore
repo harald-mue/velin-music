@@ -1,0 +1,32 @@
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Go
+server/bin/
+server/velin-server
+server/*.test
+coverage.out
+
+# Local data and secrets
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.*
+!*.env.example
+/data/
+server/data/
+
+# Android
+android/.gradle/
+android/build/
+android/**/build/
+android/local.properties
+android/.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/

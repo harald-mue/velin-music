@@ -1,0 +1,102 @@
+{{define "roots.html"}}
+{{template "layout" .}}
+{{end}}
+
+{{define "roots-body"}}
+<section class="panel">
+	<h1>Library roots</h1>
+	<p class="lead">Configure directories to index. Paths are shown only in this administration UI.</p>
+	{{if .Error}}<div class="error">{{.Error}}</div>{{end}}
+
+	<form method="post" action="/admin/roots" class="stacked-form">
+		<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+		<label for="path">Add library root</label>
+		<input type="text" id="path" name="path" placeholder="/music" autocomplete="off" required>
+		<button type="submit" class="primary">Add root</button>
+	</form>
+
+	<div class="actions">
+		<form method="post" action="/admin/scans" class="inline-form">
+			<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+			<button type="submit">Scan all roots</button>
+		</form>
+	</div>
+
+	{{if .Roots}}
+	<table>
+		<thead>
+			<tr>
+				<th>Path</th>
+				<th>Added</th>
+				<th>Latest scan</th>
+				<th></th>
+			</tr>
+		</thead>
+		<tbody>
+			{{range .Roots}}
+			<tr>
+				<td class="mono">{{.Path}}</td>
+				<td class="muted">{{.CreatedAt}}</td>
+				<td>
+					{{if .ScanRunning}}
+					<span class="status-running">running</span>
+					{{else if .LatestScanStatus}}
+					<span class="status-{{.LatestScanStatus}}">{{.LatestScanStatus}}</span>
+					<span class="muted">{{if .LatestScanFinished}}{{.LatestScanFinished}}{{else}}{{.LatestScanStarted}}{{end}}</span>
+					{{else}}
+					<span class="muted">never scanned</span>
+					{{end}}
+				</td>
+				<td>
+					<form method="post" action="/admin/roots/{{.ID}}/scan" class="inline-form">
+						<input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+						<button type="submit"{{if .ScanRunning}} disabled{{end}}>Scan</button>
+					</form>
+					<form method="post" action="/admin/roots/{{.ID}}/remove" class="inline-form">
+						<input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+						<button type="submit" class="danger"{{if .ScanRunning}} disabled{{end}}>Remove</button>
+					</form>
+				</td>
+			</tr>
+			{{end}}
+		</tbody>
+	</table>
+	{{else}}
+	<p class="muted">No library roots configured yet.</p>
+	{{end}}
+</section>
+
+{{if .RecentScans}}
+<section class="panel" style="margin-top:1.5rem">
+	<h2>Recent scans</h2>
+	<table>
+		<thead>
+			<tr>
+				<th>Root</th>
+				<th>Status</th>
+				<th>Started</th>
+				<th>Finished</th>
+				<th>Seen</th>
+				<th>Indexed</th>
+				<th>Removed</th>
+				<th></th>
+			</tr>
+		</thead>
+		<tbody>
+			{{range .RecentScans}}
+			<tr>
+				<td class="mono">{{.RootID}}</td>
+				<td><span class="status-{{.Status}}">{{.Status}}</span></td>
+				<td class="muted">{{.StartedAt}}</td>
+				<td class="muted">{{if .FinishedAt}}{{.FinishedAt}}{{else}}—{{end}}</td>
+				<td>{{.FilesSeen}}</td>
+				<td>{{.FilesIndexed}}</td>
+				<td>{{.FilesRemoved}}</td>
+				<td><a href="/admin/scans/{{.ID}}">Details</a></td>
+			</tr>
+			{{end}}
+		</tbody>
+	</table>
+</section>
+{{end}}
+{{end}}

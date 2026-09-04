@@ -1,0 +1,34 @@
+{{define "layout"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>{{.Title}} · Velin</title>
+	<link rel="stylesheet" href="/admin/static/admin.css">
+</head>
+<body>
+	<div class="shell">
+		<header>
+			<div class="brand">Velin</div>
+			{{if .Authenticated}}
+			<nav>
+				<a href="/admin/"{{if eq .ActiveNav "dashboard"}} class="active"{{end}}>Dashboard</a>
+				<a href="/admin/devices"{{if eq .ActiveNav "devices"}} class="active"{{end}}>Devices</a>
+				<a href="/admin/roots"{{if eq .ActiveNav "roots"}} class="active"{{end}}>Library</a>
+				<a href="/admin/search"{{if eq .ActiveNav "search"}} class="active"{{end}}>Search</a>
+				<a href="/admin/pairing"{{if eq .ActiveNav "pairing"}} class="active"{{end}}>Pairing</a>
+			</nav>
+			<form method="post" action="/admin/logout" class="inline-form">
+				<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+				<button type="submit">Sign out</button>
+			</form>
+			{{end}}
+		</header>
+		<main>
+			{{.BodyHTML}}
+		</main>
+	</div>
+</body>
+</html>
+{{end}}

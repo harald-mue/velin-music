@@ -1,0 +1,66 @@
+{{define "search.html"}}
+{{template "layout" .}}
+{{end}}
+
+{{define "search-body"}}
+<section class="panel">
+	<h1>Search diagnostics</h1>
+	<p class="lead">Inspect how user search text is tokenized and compiled for FTS5 before it reaches device clients.</p>
+
+	<form method="get" action="/admin/search" class="stacked-form">
+		<label for="q">Search query</label>
+		<input type="text" id="q" name="q" value="{{.SearchQuery}}" placeholder="artist album track" autocomplete="off">
+		<button type="submit" class="primary">Diagnose</button>
+	</form>
+</section>
+
+{{if .SearchQuery}}
+<section class="panel" style="margin-top:1.5rem">
+	<h2>Compilation</h2>
+	<table class="meta-table">
+		<tbody>
+			<tr><th>Valid</th><td>{{if .SearchDiag.Valid}}yes{{else}}no{{end}}</td></tr>
+			<tr><th>Input bytes</th><td>{{.SearchDiag.InputBytes}}</td></tr>
+			{{if .SearchDiag.Valid}}
+			<tr><th>Terms</th><td class="mono">{{range $index, $term := .SearchDiag.Terms}}{{if $index}}, {{end}}{{$term}}{{end}}</td></tr>
+			<tr><th>FTS match query</th><td class="mono wrap">{{.SearchDiag.MatchQuery}}</td></tr>
+			<tr><th>Cursor scope</th><td class="mono wrap">{{.SearchDiag.Scope}}</td></tr>
+			{{else}}
+			<tr><th>Error</th><td>{{.SearchDiag.Message}}</td></tr>
+			{{end}}
+		</tbody>
+	</table>
+</section>
+
+{{if .SearchDiag.Valid}}
+<section class="panel" style="margin-top:1.5rem">
+	<h2>Preview results</h2>
+	{{if .SearchResults}}
+	<p class="muted">Showing {{.SearchResultCount}} ranked tracks{{if .SearchHasMore}}; more matches are available{{end}}.</p>
+	<table>
+		<thead>
+			<tr>
+				<th>Title</th>
+				<th>Artist</th>
+				<th>Album</th>
+				<th>ID</th>
+			</tr>
+		</thead>
+		<tbody>
+			{{range .SearchResults}}
+			<tr>
+				<td>{{.Title}}</td>
+				<td>{{if .Artist}}{{.Artist}}{{else}}—{{end}}</td>
+				<td>{{if .Album}}{{.Album}}{{else}}—{{end}}</td>
+				<td class="mono">{{.ID}}</td>
+			</tr>
+			{{end}}
+		</tbody>
+	</table>
+	{{else}}
+	<p class="muted">No indexed tracks matched this query.</p>
+	{{end}}
+</section>
+{{end}}
+{{end}}
+{{end}}

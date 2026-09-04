@@ -1,0 +1,21 @@
+{{define "setup.html"}}
+{{template "layout" .}}
+{{end}}
+
+{{define "setup-body"}}
+<section class="panel">
+	<h1>Set up Velin</h1>
+	<p class="lead">Create the administrator account for this server.</p>
+	{{if .Error}}<div class="error">{{.Error}}</div>{{end}}
+	<form method="post" action="/admin/setup">
+		<label for="username">Username</label>
+		<input id="username" name="username" type="text" autocomplete="username" required>
+		<label for="password">Password</label>
+		<input id="password" name="password" type="password" autocomplete="new-password" required>
+		<p class="muted">Password must be at least 8 characters.</p>
+		<div class="actions">
+			<button type="submit" class="primary">Create administrator</button>
+		</div>
+	</form>
+</section>
+{{end}}

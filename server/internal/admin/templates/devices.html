@@ -1,0 +1,44 @@
+{{define "devices.html"}}
+{{template "layout" .}}
+{{end}}
+
+{{define "devices-body"}}
+<section class="panel">
+	<h1>Devices</h1>
+	<p class="lead">Registered Android clients. Revoked devices cannot access the library.</p>
+	{{if .Error}}<div class="error">{{.Error}}</div>{{end}}
+	{{if .Devices}}
+	<table>
+		<thead>
+			<tr>
+				<th>Name</th>
+				<th>Created</th>
+				<th>Last used</th>
+				<th>Status</th>
+				<th></th>
+			</tr>
+		</thead>
+		<tbody>
+			{{range .Devices}}
+			<tr>
+				<td>{{.Name}}</td>
+				<td class="muted">{{.CreatedAt}}</td>
+				<td class="muted">{{if .LastUsedAt}}{{.LastUsedAt}}{{else}}—{{end}}</td>
+				<td>{{if .RevokedAt}}<span class="muted">Revoked</span>{{else}}<span style="color:var(--ok)">Active</span>{{end}}</td>
+				<td>
+					{{if not .RevokedAt}}
+					<form method="post" action="/admin/devices/{{.ID}}/revoke" class="inline-form">
+						<input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+						<button type="submit" class="danger">Revoke</button>
+					</form>
+					{{end}}
+				</td>
+			</tr>
+			{{end}}
+		</tbody>
+	</table>
+	{{else}}
+	<p class="muted">No devices have been paired yet.</p>
+	{{end}}
+</section>
+{{end}}

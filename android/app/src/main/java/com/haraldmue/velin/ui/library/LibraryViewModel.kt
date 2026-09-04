@@ -3,6 +3,7 @@ package com.haraldmue.velin.ui.library
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.haraldmue.velin.data.Album
 import com.haraldmue.velin.data.ApiException
 import com.haraldmue.velin.data.LibraryGateway
 import com.haraldmue.velin.data.LibrarySnapshot
@@ -29,6 +30,10 @@ data class LibraryUiState(
     val searchLoading: Boolean = false,
     val searchResults: Page<Track> = EmptyTrackPage,
     val searchError: String? = null,
+    val selectedAlbum: Album? = null,
+    val albumTracks: List<Track> = emptyList(),
+    val albumLoading: Boolean = false,
+    val albumError: String? = null,
 )
 
 class LibraryViewModel(
@@ -37,6 +42,7 @@ class LibraryViewModel(
     private val mutableState = MutableStateFlow(LibraryUiState())
     val state: StateFlow<LibraryUiState> = mutableState.asStateFlow()
     private var searchJob: Job? = null
+    private var albumJob: Job? = null
 
     init {
         refresh()
@@ -75,6 +81,57 @@ class LibraryViewModel(
                 )
             }
         }
+    }
+
+    fun openAlbum(album: Album) {
+        albumJob?.cancel()
+        albumJob = viewModelScope.launch {
+            mutableState.value = mutableState.value.copy(
+                selectedAlbum = album,
+                albumTracks = emptyList(),
+                albumLoading = true,
+                albumError = null,
+            )
+            try {
+                val tracks = gateway.loadAlbumTracks(album.id)
+                mutableState.value = mutableState.value.copy(
+                    albumTracks = tracks,
+                    albumLoading = false,
+                )
+            } catch (error: IllegalArgumentException) {
+                mutableState.value = mutableState.value.copy(
+                    albumLoading = false,
+                    albumError = error.message ?: "Invalid album.",
+                )
+            } catch (error: ApiException) {
+                mutableState.value = mutableState.value.copy(
+                    albumLoading = false,
+                    albumError = error.message ?: "Could not load the album.",
+                    authenticationFailed = error.authenticationFailed,
+                )
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                mutableState.value = mutableState.value.copy(
+                    albumLoading = false,
+                    albumError = "Could not load the album.",
+                )
+            }
+        }
+    }
+
+    fun closeAlbum() {
+        albumJob?.cancel()
+        mutableState.value = mutableState.value.copy(
+            selectedAlbum = null,
+            albumTracks = emptyList(),
+            albumLoading = false,
+            albumError = null,
+        )
+    }
+
+    fun retryAlbum() {
+        mutableState.value.selectedAlbum?.let(::openAlbum)
     }
 
     fun search(query: String) {

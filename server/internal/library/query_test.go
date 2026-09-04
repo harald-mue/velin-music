@@ -93,6 +93,62 @@ func TestQueryRepositoryListsWithOpaqueKeysetPagination(t *testing.T) {
 	}
 }
 
+func TestQueryRepositoryAlbumTracksUseDiscAndTrackOrderAcrossPages(t *testing.T) {
+	database := openLibraryTestDB(t)
+	rootID := addTestRoot(t, database, filepath.Join(t.TempDir(), "music"))
+	scan, err := NewTrackRepository(database).BeginScan(context.Background(), rootID)
+	if err != nil {
+		t.Fatalf("BeginScan() error = %v", err)
+	}
+	tracks := []struct {
+		path, title string
+		disc, track int
+	}{
+		{"disc2.flac", "A second disc", 2, 1},
+		{"track2.flac", "A later title", 1, 2},
+		{"track1.flac", "Z first title", 1, 1},
+		{"unknown.flac", "Unknown position", 0, 0},
+	}
+	for _, item := range tracks {
+		if err := scan.Upsert(context.Background(), MediaFile{RelativePath: item.path, Format: FormatFLAC, Size: 1}, TrackMetadata{
+			Format: FormatFLAC, Title: item.title, Album: "Ordered Album", DiscNumber: item.disc, TrackNumber: item.track,
+		}); err != nil {
+			t.Fatalf("Upsert(%s) error = %v", item.path, err)
+		}
+	}
+	if err := scan.Finish(context.Background()); err != nil {
+		t.Fatalf("Finish() error = %v", err)
+	}
+
+	repository := NewQueryRepository(database)
+	albums, err := repository.ListAlbums(context.Background(), PageOptions{Limit: 10})
+	if err != nil || len(albums.Items) != 1 {
+		t.Fatalf("ListAlbums() = %+v, %v", albums, err)
+	}
+	first, err := repository.ListTracks(context.Background(), TrackListOptions{
+		PageOptions: PageOptions{Limit: 2}, AlbumID: albums.Items[0].ID,
+	})
+	if err != nil {
+		t.Fatalf("ListTracks(first) error = %v", err)
+	}
+	second, err := repository.ListTracks(context.Background(), TrackListOptions{
+		PageOptions: PageOptions{Limit: 2, Cursor: first.NextCursor}, AlbumID: albums.Items[0].ID,
+	})
+	if err != nil {
+		t.Fatalf("ListTracks(second) error = %v", err)
+	}
+	got := []string{first.Items[0].Title, first.Items[1].Title, second.Items[0].Title, second.Items[1].Title}
+	want := []string{"Z first title", "A later title", "A second disc", "Unknown position"}
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("album order = %v, want %v", got, want)
+		}
+	}
+	if !first.HasMore || first.NextCursor == "" || second.HasMore {
+		t.Fatalf("album pages = first %+v, second %+v", first, second)
+	}
+}
+
 func TestQueryRepositoryTrackPaginationUsesIDTieBreaker(t *testing.T) {
 	database := openLibraryTestDB(t)
 	rootID := addTestRoot(t, database, filepath.Join(t.TempDir(), "music"))

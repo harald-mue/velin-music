@@ -16,10 +16,12 @@ import java.util.concurrent.TimeUnit
 private const val MaxApiResponseBytes = 1L * 1_024L * 1_024L
 private const val MaxPageItems = 200
 private const val MaxModelStringLength = 4_096
+private const val MaxAlbumQueueItems = 500
 
 interface LibraryGateway {
     suspend fun status(): ServerStatus
     suspend fun loadLibrary(): LibrarySnapshot
+    suspend fun loadAlbumTracks(albumId: String): List<Track>
     suspend fun search(query: String): Page<Track>
 }
 
@@ -58,6 +60,30 @@ class VelinApiClient(
             albums = albums.await(),
             tracks = tracks.await(),
         )
+    }
+
+    override suspend fun loadAlbumTracks(albumId: String): List<Track> {
+        val normalized = albumId.trim()
+        require(normalized.isNotEmpty() && normalized.length <= 128) { "Invalid album ID." }
+        val tracks = ArrayList<Track>()
+        val seenCursors = mutableSetOf<String>()
+        var cursor: String? = null
+        do {
+            val query = mutableMapOf("album_id" to normalized, "limit" to "200")
+            cursor?.let { query["cursor"] = it }
+            val page = decodeTrackPage(getJSON("api/v1/tracks", query))
+            if (tracks.size + page.items.size > MaxAlbumQueueItems) {
+                throw ApiException("This album is too large for the playback queue.")
+            }
+            tracks += page.items
+            cursor = if (page.hasMore) {
+                page.nextCursor?.takeIf(seenCursors::add)
+                    ?: throw ApiException("The server returned invalid album pagination.")
+            } else {
+                null
+            }
+        } while (cursor != null)
+        return tracks
     }
 
     override suspend fun search(query: String): Page<Track> {
@@ -146,6 +172,8 @@ class VelinApiClient(
             artistName = item.optionalString("artist_name"),
             albumTitle = item.optionalString("album_title"),
             durationMs = item.optionalLong("duration_ms"),
+            trackNumber = item.optionalInt("track_number"),
+            discNumber = item.optionalInt("disc_number"),
             coverId = item.optionalString("cover_id"),
         )
     }

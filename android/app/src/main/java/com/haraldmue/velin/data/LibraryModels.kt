@@ -29,7 +29,9 @@ data class Track(
     val artistName: String?,
     val albumTitle: String?,
     val durationMs: Long?,
-    val coverId: String?,
+    val trackNumber: Int? = null,
+    val discNumber: Int? = null,
+    val coverId: String? = null,
 )
 
 data class Page<T>(

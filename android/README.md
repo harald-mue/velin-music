@@ -41,8 +41,22 @@ Plain HTTP is enabled for trusted-LAN deployments and produces an in-app warning
 
 After pairing, a dedicated OkHttp client adds the stored bearer token through an interceptor; no HTTP logging interceptor is installed. JSON responses are size-bounded, model strings and page lengths are validated, and `401`/`403` responses lead the user back toward pairing without exposing credentials. Home loads server status and an initial library summary, Library shows the first artist/album/track pages, and Search queries the protected FTS endpoint.
 
+## Playback foundation
+
+`PlaybackService` owns an ExoPlayer inside a Media3 `MediaSessionService`. It requests media audio focus, handles unplugged/headset "becoming noisy" events, and is declared as a non-exported media-playback foreground service. The manifest contains the foreground-service and notification permissions required by current Android versions.
+
+The service uses `PlaybackDataSourceFactory`, an OkHttp-backed Media3 data source that adds the bearer header in memory. It accepts only exact track-stream paths on the paired server origin, preserves an optional server base path, rejects query strings and foreign origins, and disables redirects. `PlaybackMediaItemFactory` converts an opaque track ID and public metadata into a token-free Media3 item with the correct FLAC or MP3 MIME type.
+
 ## Current boundaries
 
-Pagination beyond the first 50 items, detail screens, artwork loading, and Media3 playback remain to be implemented. Camera and Keystore behavior have not yet been exercised on a physical device because no ADB device was connected during validation.
+Tracks in Library and Search create token-free MediaItems and play through a lifecycle-managed `MediaController`. Selecting a track submits the bounded visible Library/Search result as a Media3 queue and starts at the selected index. The mini-player and Now Playing provide previous/next controls; Media3 advances automatically. A persistent mini-player shows title, artist, buffering state, and play/pause controls and opens a dedicated Now Playing screen. Now Playing displays title/artist/album, format, queue position, elapsed time, duration, buffered progress, and a seek slider updated from Media3 twice per second. Replay restarts an ended track. Disconnect stops playback and clears the queue. Notification permission is requested lazily on the first play attempt and does not block playback if denied.
 
-Playback will use a Media3 `MediaSessionService`. Bearer authorization must be supplied through the Media3 data source and must never be placed in stream URLs or logs. Both FLAC and MP3 streams remain first-class inputs, and the client does not request transcoding.
+Album and track rows, the mini-player, Now Playing, and MediaSession notifications now use authenticated cover artwork. Artwork URLs remain token-free; dedicated OkHttp/Media3 loaders add authorization only for the exact paired-origin cover route, reject redirects, bound notification artwork to 8 MiB, and downsample notification bitmaps.
+
+Album rows now open a cover-backed detail screen that follows authenticated cursor pages, displays disc/track positions, and loads up to 500 tracks in server-defined album order. “Play album” or selecting a track submits that complete bounded album list as the queue.
+
+Now Playing opens a queue screen backed directly by Media3 state. It highlights and selects the current item, removes entries while preserving at least one item, toggles shuffle, and cycles repeat through Off, All, and One. Shuffle/repeat state also appears on Now Playing.
+
+General-library pagination beyond the first 50 items, artist/track detail screens, queue reordering, and “play next”/“add to queue” actions remain to be implemented. A user-confirmed physical-device smoke test covers server connection, library display, and single-track playback. Automated instrumentation, QR-camera behavior, credential restoration after restart, notification controls, and extended background playback still require device validation.
+
+Bearer authorization must be supplied through the Media3 data source and must never be placed in stream URLs or logs. Both FLAC and MP3 streams remain first-class inputs, and the client does not request transcoding.

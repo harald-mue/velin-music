@@ -106,7 +106,7 @@ Collection responses use this shape:
 }
 ```
 
-`GET /api/v1/tracks` accepts optional `artist_id` and `album_id` filters. `GET /api/v1/search` requires `q` plus optional `limit` and `cursor`. Invalid IDs, cursors, limits, or search input return `400` with stable error codes; missing library items return `404`.
+`GET /api/v1/tracks` accepts optional `artist_id` and `album_id` filters. Unfiltered and artist-filtered results are ordered by title and opaque ID. Album-filtered results use disc number, track number, title, and opaque ID, with missing disc/track positions placed last; their opaque cursors preserve that ordering. `GET /api/v1/search` requires `q` plus optional `limit` and `cursor`. Invalid IDs, cursors, limits, or search input return `400` with stable error codes; missing library items return `404`.
 
 The initial search endpoint returns track models. Search input is treated as text, never raw FTS5 syntax. Punctuation separates Unicode letter/number terms; terms become quoted prefix matches joined with `AND`. Input must be valid UTF-8 and is limited to 2,048 bytes, 16 terms, and 64 Unicode code points per term. Results rank title matches above artist, album, and genre matches, then use title and opaque ID as deterministic tie-breakers.
 

@@ -254,7 +254,11 @@ func (r *QueryRepository) ListTracks(ctx context.Context, options TrackListOptio
 		return page, errors.New("library filter ID is too long")
 	}
 	scope := artistID + "\x00" + albumID
-	limit, cursor, err := preparePage("tracks", scope, options.PageOptions)
+	cursorKind := "tracks"
+	if albumID != "" {
+		cursorKind = "album_tracks"
+	}
+	limit, cursor, err := preparePage(cursorKind, scope, options.PageOptions)
 	if err != nil {
 		return page, err
 	}
@@ -273,10 +277,31 @@ func (r *QueryRepository) ListTracks(ctx context.Context, options TrackListOptio
 		args = append(args, albumID)
 	}
 	if cursor != nil {
-		query += ` AND (t.title COLLATE NOCASE > ? OR (t.title COLLATE NOCASE = ? AND t.id > ?))`
-		args = append(args, cursor.Key, cursor.Key, cursor.ID)
+		if albumID != "" {
+			if cursor.DiscNumber == nil || cursor.TrackNumber == nil {
+				return page, errors.New("invalid page cursor")
+			}
+			query += ` AND (
+				COALESCE(t.disc_number, 2147483647),
+				COALESCE(t.track_number, 2147483647),
+				t.title COLLATE NOCASE,
+				t.id
+			) > (?, ?, ?, ?)`
+			args = append(args, *cursor.DiscNumber, *cursor.TrackNumber, cursor.Key, cursor.ID)
+		} else {
+			query += ` AND (t.title COLLATE NOCASE > ? OR (t.title COLLATE NOCASE = ? AND t.id > ?))`
+			args = append(args, cursor.Key, cursor.Key, cursor.ID)
+		}
 	}
-	query += ` ORDER BY t.title COLLATE NOCASE ASC, t.id ASC LIMIT ?`
+	if albumID != "" {
+		query += ` ORDER BY
+			COALESCE(t.disc_number, 2147483647) ASC,
+			COALESCE(t.track_number, 2147483647) ASC,
+			t.title COLLATE NOCASE ASC,
+			t.id ASC LIMIT ?`
+	} else {
+		query += ` ORDER BY t.title COLLATE NOCASE ASC, t.id ASC LIMIT ?`
+	}
 	args = append(args, limit+1)
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
@@ -295,7 +320,14 @@ func (r *QueryRepository) ListTracks(ctx context.Context, options TrackListOptio
 		return page, fmt.Errorf("read tracks: %w", err)
 	}
 	return finishPage(&page, limit, func(item Track) pageCursor {
-		return pageCursor{Kind: "tracks", Scope: scope, Key: item.Title, ID: item.ID}
+		result := pageCursor{Kind: cursorKind, Scope: scope, Key: item.Title, ID: item.ID}
+		if albumID != "" {
+			discNumber := sortableTrackNumber(item.DiscNumber)
+			trackNumber := sortableTrackNumber(item.TrackNumber)
+			result.DiscNumber = &discNumber
+			result.TrackNumber = &trackNumber
+		}
+		return result
 	}), nil
 }
 
@@ -415,11 +447,20 @@ var (
 )
 
 type pageCursor struct {
-	Kind  string   `json:"kind"`
-	Scope string   `json:"scope,omitempty"`
-	Key   string   `json:"key"`
-	ID    string   `json:"id"`
-	Rank  *float64 `json:"rank,omitempty"`
+	Kind        string   `json:"kind"`
+	Scope       string   `json:"scope,omitempty"`
+	Key         string   `json:"key"`
+	ID          string   `json:"id"`
+	Rank        *float64 `json:"rank,omitempty"`
+	DiscNumber  *int     `json:"disc_number,omitempty"`
+	TrackNumber *int     `json:"track_number,omitempty"`
+}
+
+func sortableTrackNumber(value *int) int {
+	if value == nil {
+		return math.MaxInt32
+	}
+	return *value
 }
 
 func preparePage(kind, scope string, options PageOptions) (int, *pageCursor, error) {

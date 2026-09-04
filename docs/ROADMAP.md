@@ -66,17 +66,23 @@ Authentication precedes protected library, artwork, and streaming endpoints so n
 
 ## M9 — Android library UX — **active**
 
-- **Partial:** home, artists, albums, tracks, and search load their first authenticated pages; pagination and detail screens remain
-- artwork
-- loading, empty, and recoverable-error states
+- **Partial:** home, artists, albums, tracks, and search load their first authenticated pages; album detail with bounded cursor-following track loading is complete, while general pagination and artist/track details remain
+- **Complete:** authenticated artwork in album/track rows, mini-player, Now Playing, and MediaSession metadata
+- **Complete:** loading, empty, and recoverable-error states for initial pages
 
-## M10 — Playback — **planned**
+## M10 — Playback — **active**
 
-- AndroidX Media3 / ExoPlayer
-- `MediaSessionService`
-- playback queue, Now Playing, and mini-player
-- lock-screen, Bluetooth, headset controls, and seeking
-- authorization headers for original FLAC/MP3 streams
+- **Complete:** AndroidX Media3/ExoPlayer hosted by a non-exported `MediaSessionService`, with audio focus and becoming-noisy handling
+- **Complete:** server-bound authenticated Media3 OkHttp data source and token-free FLAC/MP3 media-item construction
+- **Complete:** lifecycle-managed Compose `MediaController`, Library/Search track-tap playback, lazy notification permission, and persistent play/pause mini-player
+- **Complete:** Now Playing with elapsed/duration/buffer state, replay, and bounded seeking
+- **Complete:** bounded visible-list/search queues with selected start index, automatic advance, queue position, and previous/next controls
+- **Complete:** authenticated token-free artwork metadata with redirect-safe Coil and Media3 loaders
+- **Complete:** album-specific queues in disc/track order, loaded across bounded cursor pages
+- **Complete:** Media3-backed queue display, direct selection, safe item removal, shuffle, and repeat Off/All/One
+- **Planned:** queue reordering and explicit “play next”/“add to queue” actions
+- **Partial:** seeking is complete; lock-screen, Bluetooth, headset controls, and long-running background behavior require broader device validation
+- **Complete:** authorization headers for original FLAC/MP3 streams
 
 ## M11 — Polish and operations — **planned**
 

@@ -6,11 +6,11 @@ Last updated: 2026-09-04
 
 The Go executable provides storage, indexing, authentication, administration, protected library APIs, artwork, and original-format streaming. The native Android project now builds with Kotlin, Compose, and API 37 and provides the initial Velin theme and primary navigation shell.
 
-Android first-page library browsing and search are wired; pagination, details, artwork, and playback remain.
+Android first-page library browsing/search, album details, and bounded visible-result/album queues are wired through Media3, including authenticated artwork, Now Playing, seeking, automatic advance, previous/next, queue inspection/removal, shuffle, and repeat. General pagination, artist/track details, queue reordering, and explicit enqueue actions remain.
 
 ## Current milestone
 
-**M9 — Android library UX** (active; authenticated first-page Home, Search, and Library data are wired).
+**M10 — Playback** (active; authenticated queues, artwork, mini-player, Now Playing, seeking, previous/next, queue inspection/removal, shuffle, and repeat are complete; broader device validation and optional queue reordering/enqueue actions remain).
 
 ## Completed
 
@@ -49,6 +49,14 @@ Android first-page library browsing and search are wired; pagination, details, a
 - [x] Server administration pairing result renders an ephemeral QR image directly from the token-free `server_url`/`code` payload.
 - [x] Authenticated Android OkHttp client with bearer injection, bounded JSON decoding, revocation handling, and initial status/artist/album/track/search loading.
 - [x] Android Home summary, searchable track results, and first-page Library views with loading, empty, and recoverable-error states.
+- [x] Non-exported Android Media3 `MediaSessionService` owning ExoPlayer with media audio focus, becoming-noisy handling, and foreground-service manifest declarations.
+- [x] Server-bound Media3 `OkHttpDataSource.Factory` with in-memory bearer authorization, exact paired-origin stream validation, disabled redirects, and token-free FLAC/MP3 `MediaItem` construction.
+- [x] Lifecycle-managed Media3 controller, playable Library/Search track rows, lazy notification permission, disconnect cleanup, and persistent buffering/play/pause mini-player.
+- [x] Android Now Playing screen with title/artist/album/format, elapsed/duration/buffer polling, bounded seeking, replay, and back navigation.
+- [x] Bounded Library/Search result queues with selected start index, automatic Media3 advance, queue-position state, and previous/next controls.
+- [x] Authenticated Coil artwork for album/track rows, mini-player, and Now Playing plus a bounded/downsampled Media3 bitmap loader for notifications and lock-screen metadata.
+- [x] Album detail UI and bounded cursor-following album loading, with disc/track ordering, play-album action, selected-track start, retry, empty, and revocation states.
+- [x] Media3-backed queue screen with current-item highlighting, direct selection, safe removal, shuffle, and repeat Off/All/One.
 
 ## Deferred
 
@@ -102,16 +110,24 @@ Android:
 - Build: PASS (`make android-build` / `./gradlew assembleDebug`)
 - Tests: PASS (`make android-test` / `./gradlew testDebugUnitTest`)
 - Static analysis: PASS (`make android-lint` / `./gradlew lintDebug`)
-- Physical-device/instrumentation validation: NOT RUN — no ADB device was connected; camera and Keystore behavior still require device validation.
+- Physical-device smoke test: PASS (user-confirmed server connection, library display, and single-track playback). Automated instrumentation, QR-camera behavior, credential restoration after restart, and broader media-control testing remain pending.
 
 ## Recommended next task
 
-Add cursor pagination and artist/album/track detail navigation, then load authenticated cover artwork with Coil.
+Finish general cursor pagination and artist/track detail navigation, then perform broader lock-screen, notification, Bluetooth/headset, and background-playback device validation.
 
 ## Recent work log
 
 ### 2026-09-04
 
+- Added a Media3-backed queue screen with direct selection/removal plus shuffle and repeat controls.
+- Added album detail navigation, bounded multi-page album loading, server-side disc/track keyset ordering, and complete album queue submission.
+- Added paired-origin-only authenticated artwork loading for Compose and MediaSession metadata, with redirect rejection, response bounds, notification downsampling, and no tokens in URLs.
+- Added bounded visible-result playback queues, automatic advance, queue-position state, and previous/next controls.
+- Added a Now Playing screen with live progress, duration, buffer state, bounded seeking, replay behavior, and mini-player navigation.
+- Connected Compose to `PlaybackService`, made Library/Search track rows playable, added lazy notification permission handling, and introduced a persistent mini-player.
+- Added a paired-origin-only Media3 OkHttp data source, in-memory bearer headers, redirect rejection, safe stream URL construction, and Robolectric/MockWebServer coverage.
+- Added the Media3 `MediaSessionService`/ExoPlayer foundation with audio focus, becoming-noisy handling, and current Android foreground-service declarations.
 - Added the authenticated Android OkHttp client, bounded public-model decoding, revocation handling, and initial Home/Library/Search data screens.
 - Added CameraX/ZXing pairing QR scanning with on-demand camera permission, strict token-free payload parsing, and manual-entry fallback; the admin page now renders the matching ephemeral QR image.
 - Implemented Android manual pairing, bounded/safe pair responses, HTTP(S) server URL validation, trusted-LAN HTTP warnings, and AES-GCM device credential storage backed by Android Keystore.

@@ -1,13 +1,16 @@
 package com.haraldmue.velin.ui.library
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
@@ -28,14 +31,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.haraldmue.velin.data.Album
+import com.haraldmue.velin.data.ArtworkClient
 import com.haraldmue.velin.data.Artist
 import com.haraldmue.velin.data.DeviceCredentials
 import com.haraldmue.velin.data.Track
+import com.haraldmue.velin.ui.ArtworkImage
 
 @Composable
 fun HomeScreen(
     credentials: DeviceCredentials,
     state: LibraryUiState,
+    artworkClient: ArtworkClient,
+    onAlbumClick: (Album) -> Unit,
     onRetry: () -> Unit,
     onPairAgain: () -> Unit,
 ) {
@@ -78,7 +85,7 @@ fun HomeScreen(
                 if (library.albums.items.isNotEmpty()) {
                     item { Text("Albums", style = MaterialTheme.typography.titleLarge) }
                     items(library.albums.items.take(8), key = { it.id }) { album ->
-                        AlbumRow(album)
+                        AlbumRow(album, artworkClient, onClick = { onAlbumClick(album) })
                     }
                 }
             }
@@ -95,6 +102,10 @@ private enum class LibrarySection(val label: String) {
 @Composable
 fun LibraryScreen(
     state: LibraryUiState,
+    artworkClient: ArtworkClient,
+    currentTrackId: String?,
+    onAlbumClick: (Album) -> Unit,
+    onTrackClick: (List<Track>, Int) -> Unit,
     onRetry: () -> Unit,
     onPairAgain: () -> Unit,
 ) {
@@ -128,9 +139,21 @@ fun LibraryScreen(
                     }
                 }
                 when (section) {
-                    LibrarySection.Albums -> items(library.albums.items, key = { it.id }) { AlbumRow(it) }
+                    LibrarySection.Albums -> items(library.albums.items, key = { it.id }) { album ->
+                        AlbumRow(album, artworkClient, onClick = { onAlbumClick(album) })
+                    }
                     LibrarySection.Artists -> items(library.artists.items, key = { it.id }) { ArtistRow(it) }
-                    LibrarySection.Tracks -> items(library.tracks.items, key = { it.id }) { TrackRow(it) }
+                    LibrarySection.Tracks -> itemsIndexed(
+                        items = library.tracks.items,
+                        key = { _, track -> track.id },
+                    ) { index, track ->
+                        TrackRow(
+                            track = track,
+                            artworkClient = artworkClient,
+                            isCurrent = track.id == currentTrackId,
+                            onClick = { onTrackClick(library.tracks.items, index) },
+                        )
+                    }
                 }
                 val hasMore = when (section) {
                     LibrarySection.Albums -> library.albums.hasMore
@@ -154,7 +177,10 @@ fun LibraryScreen(
 @Composable
 fun SearchScreen(
     state: LibraryUiState,
+    artworkClient: ArtworkClient,
+    currentTrackId: String?,
     onSearch: (String) -> Unit,
+    onTrackClick: (List<Track>, Int) -> Unit,
     onPairAgain: () -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
@@ -207,7 +233,17 @@ fun SearchScreen(
             )
         } else {
             LazyColumn(modifier = Modifier.padding(top = 12.dp)) {
-                items(state.searchResults.items, key = { it.id }) { track -> TrackRow(track) }
+                itemsIndexed(
+                    items = state.searchResults.items,
+                    key = { _, track -> track.id },
+                ) { index, track ->
+                    TrackRow(
+                        track = track,
+                        artworkClient = artworkClient,
+                        isCurrent = track.id == currentTrackId,
+                        onClick = { onTrackClick(state.searchResults.items, index) },
+                    )
+                }
                 if (state.searchResults.hasMore) {
                     item {
                         Text(
@@ -217,6 +253,90 @@ fun SearchScreen(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun AlbumDetailScreen(
+    album: Album,
+    state: LibraryUiState,
+    artworkClient: ArtworkClient,
+    currentTrackId: String?,
+    onPlayQueue: (List<Track>, Int) -> Unit,
+    onRetry: () -> Unit,
+    onPairAgain: () -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(24.dp),
+    ) {
+        item {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                ArtworkImage(
+                    artworkClient = artworkClient,
+                    artworkUrl = artworkClient.urlFor(album.coverId),
+                    modifier = Modifier.size(180.dp),
+                )
+                Text(
+                    text = album.title,
+                    modifier = Modifier.padding(top = 20.dp),
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                val detail = listOfNotNull(album.artistName, album.year?.toString()).joinToString(" · ")
+                if (detail.isNotEmpty()) {
+                    Text(
+                        text = detail,
+                        modifier = Modifier.padding(top = 6.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Button(
+                    onClick = { onPlayQueue(state.albumTracks, 0) },
+                    modifier = Modifier.padding(vertical = 20.dp),
+                    enabled = state.albumTracks.isNotEmpty() && !state.albumLoading,
+                ) {
+                    Text("Play album")
+                }
+            }
+        }
+        when {
+            state.albumLoading -> item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 24.dp),
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    CircularProgressIndicator()
+                }
+            }
+            state.albumError != null -> item {
+                ErrorContent(
+                    message = state.albumError,
+                    actionLabel = if (state.authenticationFailed) "Pair again" else "Retry",
+                    onAction = if (state.authenticationFailed) onPairAgain else onRetry,
+                )
+            }
+            state.albumTracks.isEmpty() -> item {
+                Text(
+                    text = "This album has no indexed tracks.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            else -> itemsIndexed(
+                items = state.albumTracks,
+                key = { _, track -> track.id },
+            ) { index, track ->
+                TrackRow(
+                    track = track,
+                    artworkClient = artworkClient,
+                    isCurrent = track.id == currentTrackId,
+                    showPosition = true,
+                    onClick = { onPlayQueue(state.albumTracks, index) },
+                )
             }
         }
     }
@@ -260,11 +380,18 @@ private fun ErrorContent(message: String, actionLabel: String, onAction: () -> U
 }
 
 @Composable
-private fun AlbumRow(album: Album) {
+private fun AlbumRow(
+    album: Album,
+    artworkClient: ArtworkClient,
+    onClick: (() -> Unit)? = null,
+) {
     ItemRow(
         title = album.title,
+        artworkClient = artworkClient,
+        artworkUrl = artworkClient.urlFor(album.coverId),
         subtitle = listOfNotNull(album.artistName, album.year?.toString()).joinToString(" · "),
         detail = "${album.trackCount} tracks",
+        onClick = onClick,
     )
 }
 
@@ -278,26 +405,71 @@ private fun ArtistRow(artist: Artist) {
 }
 
 @Composable
-private fun TrackRow(track: Track) {
+private fun TrackRow(
+    track: Track,
+    artworkClient: ArtworkClient,
+    isCurrent: Boolean = false,
+    showPosition: Boolean = false,
+    onClick: (() -> Unit)? = null,
+) {
+    val technicalDetail = listOfNotNull(
+        track.format.uppercase(),
+        track.durationMs?.let(::formatDuration),
+    ).joinToString(" · ")
+    val position = if (showPosition && track.trackNumber != null) {
+        if ((track.discNumber ?: 1) > 1) "${track.discNumber}.${track.trackNumber}. " else "${track.trackNumber}. "
+    } else {
+        ""
+    }
     ItemRow(
-        title = track.title,
+        title = position + track.title,
+        artworkClient = artworkClient,
+        artworkUrl = artworkClient.urlFor(track.coverId),
         subtitle = listOfNotNull(track.artistName, track.albumTitle).joinToString(" · "),
-        detail = listOfNotNull(track.format.uppercase(), track.durationMs?.let(::formatDuration)).joinToString(" · "),
+        detail = if (isCurrent) "Now playing · $technicalDetail" else technicalDetail,
+        onClick = onClick,
     )
 }
 
 @Composable
-private fun ItemRow(title: String, subtitle: String, detail: String) {
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-        Text(title, fontWeight = FontWeight.Medium)
-        if (subtitle.isNotEmpty()) {
-            Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun ItemRow(
+    title: String,
+    subtitle: String,
+    detail: String,
+    artworkClient: ArtworkClient? = null,
+    artworkUrl: String? = null,
+    onClick: (() -> Unit)? = null,
+) {
+    val interactionModifier = if (onClick == null) Modifier else Modifier.clickable(onClick = onClick)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(interactionModifier)
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        artworkClient?.let {
+            ArtworkImage(
+                artworkClient = it,
+                artworkUrl = artworkUrl,
+                modifier = Modifier.size(56.dp),
+            )
         }
-        Text(
-            detail,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = if (artworkClient == null) 0.dp else 12.dp),
+        ) {
+            Text(title, fontWeight = FontWeight.Medium)
+            if (subtitle.isNotEmpty()) {
+                Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text(
+                detail,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
     HorizontalDivider()
 }

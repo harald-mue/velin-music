@@ -95,6 +95,34 @@ class VelinApiClientTest {
     }
 
     @Test
+    fun albumTracksFollowBoundedCursorPages() = runTest {
+        MockWebServer().use { server ->
+            server.enqueue(
+                MockResponse().setBody(
+                    """{"items":[{"id":"track-1","title":"One","format":"flac","disc_number":1,"track_number":2}],"has_more":true,"next_cursor":"next-page"}""",
+                ),
+            )
+            server.enqueue(
+                MockResponse().setBody(
+                    """{"items":[{"id":"track-2","title":"Two","format":"mp3"}],"has_more":false}""",
+                ),
+            )
+            val client = VelinApiClient(credentials(server))
+
+            val tracks = client.loadAlbumTracks("album-1")
+
+            assertEquals(listOf("One", "Two"), tracks.map(Track::title))
+            assertEquals(1, tracks.first().discNumber)
+            assertEquals(2, tracks.first().trackNumber)
+            val first = server.takeRequest().requestUrl!!
+            assertEquals("album-1", first.queryParameter("album_id"))
+            assertEquals("200", first.queryParameter("limit"))
+            val second = server.takeRequest().requestUrl!!
+            assertEquals("next-page", second.queryParameter("cursor"))
+        }
+    }
+
+    @Test
     fun unauthorizedResponseIsMarkedAsAuthenticationFailure() = runTest {
         MockWebServer().use { server ->
             server.enqueue(MockResponse().setResponseCode(401).setBody("{}"))

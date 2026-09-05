@@ -39,7 +39,8 @@ All Docker commands below must run from the **repository root** (the directory t
 | --- | --- |
 | `Dockerfile` | Multi-stage build: compile `./cmd/velin-server` with `CGO_ENABLED=0`, copy `/velin-server` into `scratch`. |
 | `.dockerignore` | Keeps Android, docs, `.git`, and local data out of the build context. |
-| `docker-compose.yml` | Service `velin`, image name `velin-server:local`, bind mounts, ports, hardening. |
+| `docker-compose.yml` | Run the existing `velin-server:local` image (ports, mounts, user). No `build:` key, so a host without sources can `up -d`. |
+| `docker-compose.build.yml` | Adds the `build:` section. Use only on a machine that has this Git tree. |
 | `.env.example` | Template for Compose substitution. Copy to `.env`; never commit `.env`. |
 
 Compose reads `.env` automatically when it is next to `docker-compose.yml`. Values in `.env` are **host-side** substitutions (`VELIN_UID`, host paths, published port). The process inside the container always uses `VELIN_DATA_DIR=/data` and listens on `:8080`.
@@ -114,7 +115,7 @@ make docker-build
 or:
 
 ```sh
-docker compose build
+docker compose -f docker-compose.yml -f docker-compose.build.yml build
 ```
 
 Compose tags the image `velin-server:local`. The first build downloads `golang:1.26-bookworm`; later builds reuse the layer cache.
@@ -130,7 +131,7 @@ Expect a few megabytes, `linux/<your-arch>`, user `1000:1000` (Dockerfile defaul
 Rebuild after Go or Dockerfile changes with the same command. To force a clean compile:
 
 ```sh
-docker compose build --no-cache
+docker compose -f docker-compose.yml -f docker-compose.build.yml build --no-cache
 ```
 
 ### 3. Start on the same machine (local check)
@@ -142,10 +143,10 @@ make docker-up
 or:
 
 ```sh
-docker compose up --build -d
+docker compose -f docker-compose.yml -f docker-compose.build.yml up --build -d
 ```
 
-`--build` rebuilds if the Dockerfile or server sources changed, then starts service `velin` in the background with `restart: unless-stopped`.
+`--build` rebuilds if the Dockerfile or server sources changed, then starts service `velin` in the background with `restart: unless-stopped`. After the image exists, `docker compose up -d` (only `docker-compose.yml`) is enough.
 
 Check process and HTTP:
 
@@ -195,7 +196,7 @@ cp .env.example .env
 mkdir -p data
 chmod 700 data
 # if VELIN_DATA_DIR is not ./data, create and chmod 700 that host path instead
-docker compose up --build -d
+docker compose -f docker-compose.yml -f docker-compose.build.yml up --build -d
 curl -sS http://127.0.0.1:8080/api/v1/status
 ```
 
@@ -257,7 +258,7 @@ curl -sS http://127.0.0.1:8080/api/v1/status
 docker compose logs -f velin
 ```
 
-Do **not** use `docker compose up --build` on the other PC unless the Git tree is there and you intend to compile again. `up -d` starts the loaded `velin-server:local`.
+Do **not** use `up --build` on the other PC. Load the image first, then `up -d`. If Compose still prints `Building velin`, the copied `docker-compose.yml` still has a `build:` section — replace it with the current file from this repo (run-only, no `build:`) or pass `--no-build`. Older `docker-compose` (hyphen) is fine for `up -d` after `docker load`.
 
 Open `http://<other-pc-ip>:8080/admin/`, finish setup, add library root `/music`, start a scan.
 
@@ -280,7 +281,7 @@ To deploy a new binary with option A:
 
 ```sh
 git pull
-docker compose up --build -d
+docker compose -f docker-compose.yml -f docker-compose.build.yml up --build -d
 ```
 
 With option B: rebuild and `docker save` on the build machine, `docker load` on the target, then `docker compose up -d`.

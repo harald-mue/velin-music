@@ -1,0 +1,8 @@
+# Used only on a machine that has the Git tree. Merge with docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml build
+services:
+  velin:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: velin-server:local

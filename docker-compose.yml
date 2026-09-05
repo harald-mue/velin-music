@@ -1,8 +1,5 @@
 services:
   velin:
-    build:
-      context: .
-      dockerfile: Dockerfile
     image: velin-server:local
     restart: unless-stopped
     user: "${VELIN_UID:-1000}:${VELIN_GID:-1000}"

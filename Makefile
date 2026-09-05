@@ -54,10 +54,10 @@ android-lint:
 	cd $(ANDROID_DIR) && ./gradlew lintDebug
 
 docker-build:
-	docker compose build
+	docker compose -f docker-compose.yml -f docker-compose.build.yml build
 
 docker-up:
-	docker compose up --build -d
+	docker compose -f docker-compose.yml -f docker-compose.build.yml up --build -d
 
 docker-save: docker-build
 	mkdir -p dist

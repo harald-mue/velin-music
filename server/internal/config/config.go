@@ -103,6 +103,13 @@ func EnsureDataDir(path string) error {
 	if !info.IsDir() {
 		return errors.New("data directory is not a directory")
 	}
+	if err := os.Chmod(path, 0o700); err != nil {
+		return fmt.Errorf("restrict data directory permissions: %w", err)
+	}
+	info, err = os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("inspect data directory: %w", err)
+	}
 	if info.Mode().Perm()&0o077 != 0 {
 		return errors.New("data directory is accessible by other users")
 	}

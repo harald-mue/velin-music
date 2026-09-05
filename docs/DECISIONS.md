@@ -495,3 +495,21 @@ Use document-relative URLs throughout server-rendered administration pages and r
 ### Consequences
 
 A reverse proxy can mount Velin below one external prefix when it forwards both `<prefix>/admin/*` and `<prefix>/api/*` after stripping the same prefix. The Go server still registers direct `/admin/*` and `/api/*` routes and does not infer routing from untrusted forwarded-prefix headers. Deployments must not expose the two route groups below different external prefixes.
+
+## ADR-024 — Scratch container with bind-mounted music
+
+Status: Accepted
+
+Date: 2026-09-05
+
+### Context
+
+Operators will run the server on a home NAS or workstation with a large existing FLAC/MP3 tree. A container should stay small, avoid CGO, and never write music files. `scratch` is viable because the server is a static standard-library HTTP binary and SQLite is `modernc.org/sqlite`.
+
+### Decision
+
+Ship a multi-stage Dockerfile that builds with `CGO_ENABLED=0` and copies only `/velin-server` into `scratch`. Provide Compose as the operator interface: bind-mount host music at `/music:ro`, bind-mount private state at `/data`, map a numeric host UID/GID, drop capabilities, and use a read-only root filesystem. Document library roots as container paths. On startup, tighten an owned data directory to mode `0700` so typical Docker bind mounts are usable without a chmod sidecar.
+
+### Consequences
+
+There is no shell, package manager, or image `HEALTHCHECK`. UID/GID must be set so the process can write `/data` and read `/music`. Additional libraries are extra read-only mounts plus extra admin roots. Image publishing to a registry remains out of this change.

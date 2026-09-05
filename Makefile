@@ -6,7 +6,7 @@ ANDROID_DIR := android
 ANDROID_HOME ?= $(HOME)/Android/Sdk
 export ANDROID_HOME
 
-.PHONY: help clean server-build server-run server-test server-test-race server-lint server-fmt android-build android-test android-lint test
+.PHONY: help clean server-build server-run server-test server-test-race server-lint server-fmt android-build android-test android-lint test docker-build docker-up docker-save
 
 help:
 	@echo "Velin development targets:"
@@ -20,6 +20,9 @@ help:
 	@echo "  make android-test       Run Android unit tests"
 	@echo "  make android-lint       Run Android lint"
 	@echo "  make test               Run server and Android tests"
+	@echo "  make docker-build       Build the scratch server image with Compose"
+	@echo "  make docker-up          Build and start the Compose service"
+	@echo "  make docker-save        Build and write dist/velin-server-local.tar.gz for copy to another host"
 	@echo "  make clean              Remove build artifacts and test binaries"
 
 server-build:
@@ -49,6 +52,18 @@ android-test:
 
 android-lint:
 	cd $(ANDROID_DIR) && ./gradlew lintDebug
+
+docker-build:
+	docker compose build
+
+docker-up:
+	docker compose up --build -d
+
+docker-save: docker-build
+	mkdir -p dist
+	docker save velin-server:local | gzip > dist/velin-server-local.tar.gz
+	@echo "Wrote dist/velin-server-local.tar.gz"
+	@docker image inspect velin-server:local --format 'image={{.Id}} {{.Os}}/{{.Architecture}} size={{.Size}}'
 
 test: server-test android-test
 

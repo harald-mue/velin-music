@@ -74,6 +74,9 @@ make server-test
 make server-test-race
 make server-lint
 make server-fmt
+make docker-build
+make docker-save
+make docker-up
 make android-build
 make android-test
 make android-lint

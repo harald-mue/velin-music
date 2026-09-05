@@ -46,6 +46,7 @@ Android first-page library browsing/search, cursor pagination, album/artist/trac
 - [x] Admin scan error detail UI and search diagnostics.
 - [x] Graphite admin UI polish with the Android Velin mark, uniform table-row alignment, compact success-state checkmarks, browser-localized relative timestamps, responsive table overflow, bounded live scan progress polling, and reverse-proxy-prefix-safe links, forms, redirects, assets, and API calls.
 - [x] Admin security hardening with restrictive CSP/frame/MIME/referrer/permissions headers, no-store responses, structured credential-free pairing URL validation, and forwarded-header-resistant bounded rate limiting.
+- [x] Scratch Docker image and Compose bind-mounts for read-only host music plus a private data directory, with a full developer procedure in `README.md` and operator notes in `docs/DEPLOYMENT.md`.
 - [x] Kotlin/Compose Android project with Gradle Wrapper, API 37 build, polished graphite/ice-blue theme, accessible Material iconography, primary navigation shell, and unit tests.
 - [x] Android QR/manual pairing with CameraX/ZXing, strict payload parsing, bounded OkHttp response handling, HTTP(S) URL normalization, safe errors, and Android Keystore-backed AES-GCM credential storage.
 - [x] Server administration pairing defaults `server_url` to the editable browser-visible base (including a reverse-proxy path prefix) and renders an ephemeral QR image directly from the token-free `server_url`/`code` payload.
@@ -83,7 +84,7 @@ Android first-page library browsing/search, cursor pagination, album/artist/trac
 
 ## Important implementation notes
 
-- The database file is `<VELIN_DATA_DIR>/velin.db`; symlink endpoints are rejected for the data directory, database file, and cover-cache directory.
+- The database file is `<VELIN_DATA_DIR>/velin.db`; symlink endpoints are rejected for the data directory, database file, and cover-cache directory. An owned data directory is tightened to mode `0700` on startup so Docker bind mounts are usable.
 - Startup filesystem failures are logged without wrapped path-bearing errors.
 - Root paths, track-relative paths, file sizes, and modification identity stay outside public library response models.
 - Discovery and scanning are sequential and callback-based, keeping memory bounded for large libraries. Unchanged format/size/modification identity is marked seen without reparsing tags.
@@ -121,12 +122,14 @@ Android:
 
 ## Recommended next task
 
-Finish broader lock-screen, notification, Bluetooth/headset, background-playback, and Android Auto in-car browse/playback device validation.
+Run `docker compose up --build` against a real music bind mount, add `/music` as a library root, and confirm scans and admin UI. Then continue lock-screen, notification, Bluetooth/headset, background-playback, and Android Auto in-car validation.
 
 ## Recent work log
 
 ### 2026-09-05
 
+- Documented the developer Docker workflow in `README.md`, including `make docker-save` → `dist/velin-server-local.tar.gz` for copying a linux/amd64 image to another PC.
+- Added a `scratch` server image, Compose bind-mounts for `/music` (read-only) and `/data`, and English operator documentation in `docs/DEPLOYMENT.md` (ADR-024). Startup now tightens an owned data directory to mode `0700`.
 - Album and artist detail screens can append their bounded track lists to the current queue as well as replace it with Play album / Play artist.
 - Queue Save/Load is a single private JSON slot per paired device: Load greys missing library IDs, Save writes only available IDs, and file I/O runs off the main thread. Documented as ADR-021; playlists remain a v1 non-goal.
 

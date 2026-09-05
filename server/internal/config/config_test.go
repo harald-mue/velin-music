@@ -109,6 +109,23 @@ func TestEnsureDataDir(t *testing.T) {
 	}
 }
 
+func TestEnsureDataDirTightensExistingPermissions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "velin-data")
+	if err := os.Mkdir(path, 0o755); err != nil {
+		t.Fatalf("create data directory: %v", err)
+	}
+	if err := EnsureDataDir(path); err != nil {
+		t.Fatalf("EnsureDataDir() error = %v", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat data directory: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o700 {
+		t.Fatalf("data directory permissions = %o, want 700", got)
+	}
+}
+
 func TestEnsureDataDirRejectsFileAndSymlink(t *testing.T) {
 	parent := t.TempDir()
 	path := filepath.Join(parent, "not-a-directory")

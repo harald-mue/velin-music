@@ -22,6 +22,8 @@ The current implementation includes configuration, private managed-storage prepa
 
 Only the status, pairing, admin JSON/HTML (including library roots and scan triggers), and bearer-protected library browse/search/artwork/streaming endpoints are wired into the executable. Optional startup scanning and periodic scheduling are controlled by environment variables. The admin frontend uses prefix-preserving relative links and redirects and derives API/pairing bases from the browser-visible path before `/admin/`; a reverse proxy can therefore expose both `/admin/*` and `/api/*` under one stripped external prefix such as `/velin`.
 
+The supported container deployment is a static binary in `scratch` with Compose bind-mounts: host music at `/music` (read-only) and managed state at `/data`. Operator steps are in [`DEPLOYMENT.md`](DEPLOYMENT.md).
+
 ### Velin Android
 
 A native Kotlin/Jetpack Compose application. Responsibilities:

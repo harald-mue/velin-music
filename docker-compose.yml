@@ -1,0 +1,28 @@
+services:
+  velin:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: velin-server:local
+    restart: unless-stopped
+    user: "${VELIN_UID:-1000}:${VELIN_GID:-1000}"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "${VELIN_PORT:-8080}:8080"
+    environment:
+      VELIN_HTTP_ADDR: ":8080"
+      VELIN_DATA_DIR: /data
+      VELIN_VERSION: "${VELIN_VERSION:-dev}"
+      VELIN_PUBLIC_URL: "${VELIN_PUBLIC_URL:-}"
+      VELIN_SECURE_COOKIES: "${VELIN_SECURE_COOKIES:-false}"
+      VELIN_SCAN_ON_STARTUP: "${VELIN_SCAN_ON_STARTUP:-false}"
+      VELIN_SCAN_INTERVAL: "${VELIN_SCAN_INTERVAL:-}"
+    volumes:
+      - "${VELIN_DATA_DIR:-./data}:/data"
+      - "${VELIN_MUSIC_DIR:-./music}:/music:ro"
+    tmpfs:
+      - /tmp:size=64M,mode=1777

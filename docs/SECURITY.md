@@ -54,6 +54,8 @@ Velin is intended primarily for self-hosting on a trusted private network. Plain
 
 Plain HTTP is acceptable only for a trusted private LAN and must be clearly labeled as transport-unencrypted. The Android client permits HTTP for this use case but shows a warning during pairing. Public or hostile-network deployment requires HTTPS. Velin does not trust forwarded headers for rate-limit identity or cookie security; set `VELIN_SECURE_COOKIES=true` when HTTPS terminates at a reverse proxy.
 
+The documented Compose deployment runs a static binary in `scratch` with a read-only root filesystem, dropped capabilities, a numeric non-root UID, a private `/data` volume, and a read-only music bind mount. Music remains host-owned and is never written by the container. See [`DEPLOYMENT.md`](DEPLOYMENT.md).
+
 ### Logging and errors
 
 Use structured logs without secrets, credentials, pairing codes, authorization headers, or local paths. Current startup failures are intentionally logged without wrapped filesystem errors. Keep client errors stable and intentionally vague where detail could disclose filesystem state. Make administrative audit events useful without recording secret material.

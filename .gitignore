@@ -19,6 +19,7 @@ coverage.out
 !*.env.example
 /data/
 server/data/
+/dist/
 
 # Android
 android/.gradle/

@@ -33,7 +33,11 @@ make server-build
 
 Configuration values are whitespace-trimmed. Blank values supplied only as whitespace are rejected, and externally visible address/version values are length-bounded.
 
-`VELIN_DATA_DIR` is created with mode `0700`. Existing directories accessible by group or other users and symlink endpoints are rejected. SQLite is stored at `<VELIN_DATA_DIR>/velin.db`; a pre-existing symlink at that path is rejected.
+`VELIN_DATA_DIR` is created with mode `0700`. If the process owns an existing directory, Velin tightens its mode to `0700`. Symlink endpoints remain rejected. SQLite is stored at `<VELIN_DATA_DIR>/velin.db`; a pre-existing symlink at that path is rejected.
+
+## Docker
+
+Build and run from the **repository root** (not this directory). Developer steps for image build, `.env`, target-host install, and container start are in [`../README.md`](../README.md). Mount and proxy notes are in [`../docs/DEPLOYMENT.md`](../docs/DEPLOYMENT.md).
 
 ## Reverse-proxy path prefixes
 

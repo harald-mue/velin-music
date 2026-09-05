@@ -4,7 +4,7 @@ Go module: `github.com/harald-mue/velin-music/server`
 
 The server is a Go application built around the standard-library HTTP stack and a pure-Go SQLite driver. The executable initializes private managed storage and the database, logs lifecycle events as JSON, serves public status/pairing endpoints, admin JSON and HTML routes (including ephemeral pairing QR images, library-root management, and scan triggers), bearer-protected library browse/search/artwork/streaming endpoints, and shuts down cleanly on SIGINT/SIGTERM.
 
-The `internal/library` package implements validated root persistence, bounded FLAC/MP3 discovery and metadata parsing, artwork caching with startup garbage collection, transactional scan reconciliation, interrupted-scan recovery, sequential multi-root orchestration, optional startup scanning, periodic full-library scheduling, paginated artist/album/track queries, and ranked FTS5 track search.
+The `internal/library` package implements validated root persistence, bounded FLAC/MP3 discovery and metadata parsing, artwork caching with startup garbage collection, transactional scan reconciliation, interrupted-scan recovery, globally serialized sequential multi-root orchestration with throttled live counters, optional startup scanning, periodic full-library scheduling, paginated artist/album/track queries, and ranked FTS5 track search.
 
 ## Run
 
@@ -26,14 +26,18 @@ make server-build
 - `VELIN_HTTP_ADDR` — listen address; defaults to `:8080`.
 - `VELIN_VERSION` — version returned by the status endpoint; defaults to `dev`.
 - `VELIN_DATA_DIR` — private database and cache directory; defaults to the absolute form of `./data` relative to the process working directory.
-- `VELIN_PUBLIC_URL` — optional public HTTP(S) base URL used when creating pairing QR payloads without an explicit `server_url` request field.
-- `VELIN_SECURE_COOKIES` — when `true`, admin session cookies are marked `Secure` even without TLS at the server process.
+- `VELIN_PUBLIC_URL` — optional public HTTP(S) base URL used by API clients that create pairing QR payloads without an explicit `server_url`. The browser administration form defaults to its current origin and remains editable.
+- `VELIN_SECURE_COOKIES` — when `true`, admin session cookies are marked `Secure` even without TLS at the server process. Set this when HTTPS terminates at a reverse proxy; Velin does not trust forwarded headers by default.
 - `VELIN_SCAN_ON_STARTUP` — when `true`, starts a background full-library scan after startup maintenance completes; defaults to `false`.
-- `VELIN_SCAN_INTERVAL` — optional periodic full-library scan interval parsed with Go duration syntax (for example `6h` or `30m`); defaults to `0` (disabled). Overlapping full-library scans are skipped.
+- `VELIN_SCAN_INTERVAL` — optional periodic full-library scan interval parsed with Go duration syntax (for example `6h` or `30m`); defaults to `0` (disabled). All overlapping scan triggers are skipped or rejected so only one filesystem scan runs at a time.
 
 Configuration values are whitespace-trimmed. Blank values supplied only as whitespace are rejected, and externally visible address/version values are length-bounded.
 
 `VELIN_DATA_DIR` is created with mode `0700`. Existing directories accessible by group or other users and symlink endpoints are rejected. SQLite is stored at `<VELIN_DATA_DIR>/velin.db`; a pre-existing symlink at that path is rejected.
+
+## Reverse-proxy path prefixes
+
+The administration frontend preserves an external path prefix in relative navigation, forms, redirects, assets, scan-status polling, and generated pairing URLs. For example, a reverse proxy may expose Velin at `https://host.example/velin/` and strip `/velin` before forwarding both `/velin/admin/*` and `/velin/api/*` to this server. The pairing form then defaults to `https://host.example/velin`, and Android appends its API paths below that base URL. The proxy must route both subtrees under the same prefix; the Go server's direct routes remain `/admin/*` and `/api/*`. Configure `VELIN_SECURE_COOKIES=true` for an HTTPS-terminating proxy.
 
 ## Implemented HTTP endpoints
 
@@ -104,7 +108,7 @@ Example status response:
 {"name":"Velin","status":"ok","version":"dev"}
 ```
 
-No root-management or scan-trigger endpoint exists yet. See [`../docs/API.md`](../docs/API.md) and [`../docs/PROGRESS.md`](../docs/PROGRESS.md) for request/response details and canonical implementation status.
+See [`../docs/API.md`](../docs/API.md) and [`../docs/PROGRESS.md`](../docs/PROGRESS.md) for request/response details and canonical implementation status.
 
 ## Validation
 

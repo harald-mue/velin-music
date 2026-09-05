@@ -7,7 +7,7 @@
 	<h1>Pairing code created</h1>
 	<p class="lead">Give this code to the Android app before it expires.</p>
 	<p><strong>Device:</strong> {{.PairingDeviceName}}</p>
-	<p><strong>Expires:</strong> <span class="muted">{{.PairingExpiresAt}}</span></p>
+	<p><strong>Expires:</strong> <time class="muted" datetime="{{.PairingExpiresAt}}" data-local-time>{{.PairingExpiresAt}}</time></p>
 	<p><strong>Server URL:</strong> <span class="mono">{{.PairingServerURL}}</span></p>
 	<p><strong>Scan with the Velin Android app:</strong></p>
 	<img class="pairing-qr" src="{{.PairingQRImageURL}}" alt="Velin pairing QR code" width="320" height="320">
@@ -16,8 +16,8 @@
 	<p><strong>QR payload:</strong></p>
 	<pre class="code-block mono">{{.PairingQRPayload}}</pre>
 	<div class="actions">
-		<a class="button" href="/admin/pairing">Create another</a>
-		<a class="button" href="/admin/devices">View devices</a>
+		<a class="button" href="pairing">Create another</a>
+		<a class="button" href="devices">View devices</a>
 	</div>
 </section>
 {{end}}

@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -126,14 +127,47 @@ func TestAdminMiddlewareRequiresSessionAndCSRF(t *testing.T) {
 	})
 }
 
+func TestRequestSecureCookiesDoesNotTrustForwardedProto(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "http://velin.local/admin/", nil)
+	request.Header.Set("X-Forwarded-Proto", "https")
+	if RequestSecureCookies(request, false) {
+		t.Fatal("untrusted X-Forwarded-Proto enabled Secure cookies")
+	}
+	request.TLS = &tls.ConnectionState{}
+	if !RequestSecureCookies(request, false) {
+		t.Fatal("TLS request did not enable Secure cookies")
+	}
+	request.TLS = nil
+	if !RequestSecureCookies(request, true) {
+		t.Fatal("configured secure cookies were not enabled")
+	}
+}
+
 func TestNormalizeServerURL(t *testing.T) {
-	for _, value := range []string{"", "ftp://example.com", "http://user@host", "http://host/path@"} {
+	for _, value := range []string{
+		"",
+		"ftp://example.com",
+		"http://",
+		"http:///missing-host",
+		"http://user:secret@host",
+		"http://host/path?token=secret",
+		"http://host/path#fragment",
+		"http://host\\@evil.example",
+		"http://host/%zz",
+		"http://host/\nother",
+	} {
 		if _, err := NormalizeServerURL(value); err == nil {
 			t.Fatalf("NormalizeServerURL(%q) error = nil, want error", value)
 		}
 	}
-	got, err := NormalizeServerURL("https://velin.local:8080/")
-	if err != nil || got != "https://velin.local:8080" {
-		t.Fatalf("NormalizeServerURL() = %q, %v", got, err)
+	for input, want := range map[string]string{
+		"https://velin.local:8080/":       "https://velin.local:8080",
+		"HTTPS://velin.local/velin/":      "https://velin.local/velin",
+		"https://velin.local/path%20name": "https://velin.local/path%20name",
+	} {
+		got, err := NormalizeServerURL(input)
+		if err != nil || got != want {
+			t.Fatalf("NormalizeServerURL(%q) = %q, %v, want %q", input, got, err, want)
+		}
 	}
 }

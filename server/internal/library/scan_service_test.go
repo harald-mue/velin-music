@@ -28,14 +28,14 @@ func TestTryStartAllSkipsOverlappingScans(t *testing.T) {
 	defer cleanup()
 
 	service.mu.Lock()
-	service.allScan = true
+	service.active = true
 	service.mu.Unlock()
 	if service.TryStartAll() {
 		t.Fatal("TryStartAll() while active = true, want false")
 	}
 
 	service.mu.Lock()
-	service.allScan = false
+	service.active = false
 	service.mu.Unlock()
 	if !service.TryStartAll() {
 		t.Fatal("TryStartAll() = false, want true")
@@ -44,7 +44,7 @@ func TestTryStartAllSkipsOverlappingScans(t *testing.T) {
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		service.mu.Lock()
-		active := service.allScan
+		active := service.active
 		service.mu.Unlock()
 		if !active {
 			return
@@ -59,7 +59,7 @@ func TestStartAllReturnsConflictWhenScanRunning(t *testing.T) {
 	defer cleanup()
 
 	service.mu.Lock()
-	service.allScan = true
+	service.active = true
 	service.mu.Unlock()
 
 	if err := service.StartAll(); err != ErrScanAlreadyRunning {

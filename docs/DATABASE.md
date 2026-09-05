@@ -13,7 +13,7 @@ Velin uses SQLite with FTS5 and explicit schema migrations. The database is an i
 - `pairing_codes`: hashed one-time secret, expiry, consumed timestamp, and requested device context.
 - `admin_users`: bootstrap administrator username and Argon2id password hash.
 - `admin_sessions`: hashed browser session token, CSRF token, expiry, and revocation state.
-- `scan_runs`: lifecycle, counts, start/end timestamps, and status.
+- `scan_runs`: lifecycle, throttled live counters, finalized counts, start/end timestamps, and status.
 - `scan_errors`: scan run, root, source identity, safe error code/message, and timestamp.
 - `scan_seen_tracks`: temporary per-scan root-relative paths used to make complete-scan deletion safe without retaining all paths in memory.
 
@@ -45,4 +45,4 @@ Migrations are ordered, immutable, and applied in one transaction where SQLite p
 
 ## Reconciliation
 
-A scan compares root-relative format, size, and modification identity. Unchanged files receive only a seen marker; new or changed files are parsed and upserted. Files no longer present are removed only during successful reconciliation, followed by orphan metadata cleanup. A failed, cancelled, or interrupted scan never treats unvisited files as deleted. Scan runs and errors retain partial-outcome diagnostics. Track upserts record a seen marker in the same transaction as the track and search-index update. Successful `Finish` removes unmarked tracks and clears markers; explicit failure/cancellation clears markers without deleting tracks. A process crash can leave a `running` row and markers; server startup maintenance marks those scans failed, records an interrupted error, and clears markers.
+A scan compares root-relative format, size, and modification identity. During discovery it checkpoints monotonic in-memory counters to `scan_runs` at a bounded cadence so administration clients can observe progress without counting the potentially huge `scan_seen_tracks` table or retaining paths in memory. Unchanged files receive only a seen marker; new or changed files are parsed and upserted. Files no longer present are removed only during successful reconciliation, followed by orphan metadata cleanup. A failed, cancelled, or interrupted scan never treats unvisited files as deleted. Scan runs and errors retain partial-outcome diagnostics. Track upserts record a seen marker in the same transaction as the track and search-index update. Successful `Finish` removes unmarked tracks and clears markers; explicit failure/cancellation clears markers without deleting tracks. A process crash can leave a `running` row and markers; server startup maintenance marks those scans failed, records an interrupted error, and clears markers.

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"html/template"
 	"net/http"
+	"path"
+	"strings"
 )
 
 type pageData struct {
@@ -14,6 +16,7 @@ type pageData struct {
 	CSRFToken         string
 	Version           string
 	ActiveNav         string
+	AdminURLPrefix    string
 	Error             string
 	ServerURL         string
 	Devices           []deviceView
@@ -25,6 +28,7 @@ type pageData struct {
 	PairingQRImageURL template.URL
 	Roots             []rootView
 	RecentScans       []scanView
+	ScanRunning       bool
 	Scan              scanView
 	ScanErrors        []scanErrorView
 	ScanErrorTotal    int
@@ -39,15 +43,18 @@ type rootView struct {
 	ID                 string
 	Path               string
 	CreatedAt          string
+	LatestScanID       string
 	LatestScanStatus   string
 	LatestScanStarted  string
 	LatestScanFinished string
+	LatestFilesSeen    int
 	ScanRunning        bool
 }
 
 type scanView struct {
 	ID           string
 	RootID       string
+	RootPath     string
 	Status       string
 	StartedAt    string
 	FinishedAt   string
@@ -105,5 +112,46 @@ func (h *Handler) render(w http.ResponseWriter, pageName string, data pageData) 
 }
 
 func (h *Handler) redirect(w http.ResponseWriter, r *http.Request, location string, status int) {
+	if location == "/admin" || strings.HasPrefix(location, "/admin/") {
+		w.Header().Set("Location", relativeAdminLocation(r.URL.Path, location))
+		w.WriteHeader(status)
+		return
+	}
 	http.Redirect(w, r, location, status)
+}
+
+// relativeAdminLocation preserves an external reverse-proxy prefix because a
+// browser resolves it relative to the URL visible in its address bar.
+func relativeAdminLocation(requestPath, targetPath string) string {
+	from := splitURLPath(path.Dir(requestPath))
+	to := splitURLPath(targetPath)
+	common := 0
+	for common < len(from) && common < len(to) && from[common] == to[common] {
+		common++
+	}
+	parts := make([]string, 0, len(from)-common+len(to)-common+1)
+	for range from[common:] {
+		parts = append(parts, "..")
+	}
+	if common == len(to) && len(to) > 0 && len(from) > common && !strings.HasSuffix(targetPath, "/") {
+		parts = append(parts, "..", to[len(to)-1])
+	} else {
+		parts = append(parts, to[common:]...)
+	}
+	if len(parts) == 0 {
+		return "./"
+	}
+	result := strings.Join(parts, "/")
+	if strings.HasSuffix(targetPath, "/") {
+		result += "/"
+	}
+	return result
+}
+
+func splitURLPath(value string) []string {
+	value = strings.Trim(path.Clean("/"+value), "/")
+	if value == "" || value == "." {
+		return nil
+	}
+	return strings.Split(value, "/")
 }

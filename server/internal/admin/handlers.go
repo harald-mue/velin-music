@@ -446,7 +446,7 @@ func (h *Handler) scanRootHandler() http.HandlerFunc {
 			h.renderRootsPage(w, r, session, "Library root not found.")
 			return
 		} else if errors.Is(err, library.ErrScanAlreadyRunning) {
-			h.renderRootsPage(w, r, session, "A scan is already running for that root.")
+			h.renderRootsPage(w, r, session, "A library scan is already running.")
 			return
 		} else if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
@@ -472,7 +472,7 @@ func (h *Handler) scanAllHandler() http.HandlerFunc {
 			return
 		}
 		if err := h.scans.StartAll(); errors.Is(err, library.ErrScanAlreadyRunning) {
-			h.renderRootsPage(w, r, session, "A full-library scan is already running.")
+			h.renderRootsPage(w, r, session, "A library scan is already running.")
 			return
 		} else if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
@@ -489,7 +489,10 @@ func (h *Handler) renderRootsPage(w http.ResponseWriter, r *http.Request, sessio
 		return
 	}
 	views := make([]rootView, 0, len(roots))
+	rootPaths := make(map[string]string, len(roots))
+	scanRunning := false
 	for _, root := range roots {
+		rootPaths[root.ID] = root.Path
 		view := rootView{
 			ID:        root.ID,
 			Path:      root.Path,
@@ -501,12 +504,15 @@ func (h *Handler) renderRootsPage(w http.ResponseWriter, r *http.Request, sessio
 			return
 		}
 		if latest != nil {
+			view.LatestScanID = latest.ID
 			view.LatestScanStatus = latest.Status
 			view.LatestScanStarted = formatTime(latest.StartedAt)
+			view.LatestFilesSeen = latest.FilesSeen
 			if latest.FinishedAt != nil {
 				view.LatestScanFinished = formatTime(*latest.FinishedAt)
 			}
 			view.ScanRunning = latest.Status == "running"
+			scanRunning = scanRunning || view.ScanRunning
 		}
 		views = append(views, view)
 	}
@@ -520,6 +526,7 @@ func (h *Handler) renderRootsPage(w http.ResponseWriter, r *http.Request, sessio
 		view := scanView{
 			ID:           run.ID,
 			RootID:       run.RootID,
+			RootPath:     rootPaths[run.RootID],
 			Status:       run.Status,
 			StartedAt:    formatTime(run.StartedAt),
 			FilesSeen:    run.FilesSeen,
@@ -541,6 +548,7 @@ func (h *Handler) renderRootsPage(w http.ResponseWriter, r *http.Request, sessio
 		Error:         message,
 		Roots:         views,
 		RecentScans:   scanViews,
+		ScanRunning:   scanRunning,
 	})
 }
 
@@ -584,7 +592,15 @@ func (h *Handler) scanDetailHandler() http.HandlerFunc {
 				CreatedAt:  formatTime(item.CreatedAt),
 			})
 		}
+		root, err := h.roots.GetRoot(r.Context(), run.RootID)
+		if err != nil && !errors.Is(err, library.ErrRootNotFound) {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 		scan := scanViewFromRecord(*run)
+		if err == nil {
+			scan.RootPath = root.Path
+		}
 		h.render(w, "scan_detail", pageData{
 			Title:          "Scan details",
 			Authenticated:  true,
@@ -592,7 +608,9 @@ func (h *Handler) scanDetailHandler() http.HandlerFunc {
 			CSRFToken:      session.CSRFToken,
 			Version:        h.cfg.Version,
 			ActiveNav:      "roots",
+			AdminURLPrefix: "../",
 			Scan:           scan,
+			ScanRunning:    scan.Status == "running",
 			ScanErrors:     errorViews,
 			ScanErrorTotal: errorTotal,
 		})

@@ -7,7 +7,7 @@
 	<h1>Set up Velin</h1>
 	<p class="lead">Create the administrator account for this server.</p>
 	{{if .Error}}<div class="error">{{.Error}}</div>{{end}}
-	<form method="post" action="/admin/setup">
+	<form method="post" action="setup">
 		<label for="username">Username</label>
 		<input id="username" name="username" type="text" autocomplete="username" required>
 		<label for="password">Password</label>

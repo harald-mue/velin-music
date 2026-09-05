@@ -3,12 +3,12 @@
 {{end}}
 
 {{define "roots-body"}}
-<section class="panel">
+<section class="panel" data-scan-monitor="list" data-scan-running="{{if .ScanRunning}}true{{else}}false{{end}}">
 	<h1>Library roots</h1>
 	<p class="lead">Configure directories to index. Paths are shown only in this administration UI.</p>
 	{{if .Error}}<div class="error">{{.Error}}</div>{{end}}
 
-	<form method="post" action="/admin/roots" class="stacked-form">
+	<form method="post" action="roots" class="stacked-form">
 		<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
 		<label for="path">Add library root</label>
 		<input type="text" id="path" name="path" placeholder="/music" autocomplete="off" required>
@@ -16,87 +16,102 @@
 	</form>
 
 	<div class="actions">
-		<form method="post" action="/admin/scans" class="inline-form">
+		<form method="post" action="scans" class="inline-form">
 			<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-			<button type="submit">Scan all roots</button>
+			<button type="submit" data-scan-trigger{{if .ScanRunning}} disabled{{end}}>Scan all roots</button>
 		</form>
 	</div>
 
+	<div class="scan-activity" data-scan-activity role="status" aria-live="polite"{{if not .ScanRunning}} hidden{{end}}>
+		<strong>Library scan in progress</strong>
+		<div class="scan-progress" role="progressbar" aria-label="Library scan in progress"></div>
+		<p class="muted"><span data-scan-field="seen">{{range .RecentScans}}{{if eq .Status "running"}}{{.FilesSeen}}{{end}}{{end}}</span> files seen · <span data-scan-field="indexed">{{range .RecentScans}}{{if eq .Status "running"}}{{.FilesIndexed}}{{end}}{{end}}</span> indexed. Progress updates automatically; existing tracks remain intact until completion.</p>
+	</div>
+
 	{{if .Roots}}
-	<table>
+	<div class="table-scroll">
+	<table class="data-table">
 		<thead>
 			<tr>
 				<th>Path</th>
 				<th>Added</th>
 				<th>Latest scan</th>
-				<th></th>
+				<th><span class="visually-hidden">Actions</span></th>
 			</tr>
 		</thead>
 		<tbody>
 			{{range .Roots}}
-			<tr>
-				<td class="mono">{{.Path}}</td>
-				<td class="muted">{{.CreatedAt}}</td>
-				<td>
+			<tr data-root-id="{{.ID}}" data-latest-scan-id="{{.LatestScanID}}">
+				<td class="mono path-cell">{{.Path}}</td>
+				<td class="muted cell-nowrap"><time datetime="{{.CreatedAt}}" data-local-time>{{.CreatedAt}}</time></td>
+				<td class="cell-nowrap">
+					<div class="scan-state">
 					{{if .ScanRunning}}
-					<span class="status-running">running</span>
+					<span class="scan-status status-running" data-scan-field="status">running</span>
+					<span class="muted"><span data-scan-field="seen">{{.LatestFilesSeen}}</span> seen</span>
 					{{else if .LatestScanStatus}}
-					<span class="status-{{.LatestScanStatus}}">{{.LatestScanStatus}}</span>
-					<span class="muted">{{if .LatestScanFinished}}{{.LatestScanFinished}}{{else}}{{.LatestScanStarted}}{{end}}</span>
+					<span class="scan-status status-{{.LatestScanStatus}}" data-scan-field="status"{{if eq .LatestScanStatus "completed"}} aria-label="completed" title="Completed"{{end}}>{{.LatestScanStatus}}</span>
+					<time class="muted" datetime="{{if .LatestScanFinished}}{{.LatestScanFinished}}{{else}}{{.LatestScanStarted}}{{end}}" data-local-time data-scan-field="finished">{{if .LatestScanFinished}}{{.LatestScanFinished}}{{else}}{{.LatestScanStarted}}{{end}}</time>
 					{{else}}
 					<span class="muted">never scanned</span>
 					{{end}}
+					</div>
 				</td>
-				<td>
-					<form method="post" action="/admin/roots/{{.ID}}/scan" class="inline-form">
-						<input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-						<button type="submit"{{if .ScanRunning}} disabled{{end}}>Scan</button>
-					</form>
-					<form method="post" action="/admin/roots/{{.ID}}/remove" class="inline-form">
-						<input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-						<button type="submit" class="danger"{{if .ScanRunning}} disabled{{end}}>Remove</button>
-					</form>
+				<td class="cell-actions">
+					<div class="row-actions">
+						<form method="post" action="roots/{{.ID}}/scan">
+							<input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+							<button type="submit" data-scan-trigger{{if $.ScanRunning}} disabled{{end}}>Scan</button>
+						</form>
+						<form method="post" action="roots/{{.ID}}/remove">
+							<input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+							<button type="submit" class="danger"{{if $.ScanRunning}} disabled{{end}}>Remove</button>
+						</form>
+					</div>
 				</td>
 			</tr>
 			{{end}}
 		</tbody>
 	</table>
+	</div>
 	{{else}}
 	<p class="muted">No library roots configured yet.</p>
 	{{end}}
 </section>
 
 {{if .RecentScans}}
-<section class="panel" style="margin-top:1.5rem">
+<section class="panel">
 	<h2>Recent scans</h2>
-	<table>
+	<div class="table-scroll">
+	<table class="data-table">
 		<thead>
 			<tr>
 				<th>Root</th>
 				<th>Status</th>
 				<th>Started</th>
 				<th>Finished</th>
-				<th>Seen</th>
-				<th>Indexed</th>
-				<th>Removed</th>
-				<th></th>
+				<th class="cell-number">Seen</th>
+				<th class="cell-number">Indexed</th>
+				<th class="cell-number">Removed</th>
+				<th><span class="visually-hidden">Details</span></th>
 			</tr>
 		</thead>
 		<tbody>
 			{{range .RecentScans}}
-			<tr>
-				<td class="mono">{{.RootID}}</td>
-				<td><span class="status-{{.Status}}">{{.Status}}</span></td>
-				<td class="muted">{{.StartedAt}}</td>
-				<td class="muted">{{if .FinishedAt}}{{.FinishedAt}}{{else}}—{{end}}</td>
-				<td>{{.FilesSeen}}</td>
-				<td>{{.FilesIndexed}}</td>
-				<td>{{.FilesRemoved}}</td>
-				<td><a href="/admin/scans/{{.ID}}">Details</a></td>
+			<tr data-scan-id="{{.ID}}">
+				<td class="mono path-cell">{{if .RootPath}}{{.RootPath}}{{else}}{{.RootID}}{{end}}</td>
+				<td class="cell-nowrap"><span class="scan-status status-{{.Status}}" data-scan-field="status"{{if eq .Status "completed"}} aria-label="completed" title="Completed"{{end}}>{{.Status}}</span></td>
+				<td class="muted cell-nowrap"><time datetime="{{.StartedAt}}" data-local-time>{{.StartedAt}}</time></td>
+				<td class="muted cell-nowrap"><time{{if .FinishedAt}} datetime="{{.FinishedAt}}"{{end}} data-local-time data-scan-field="finished">{{if .FinishedAt}}{{.FinishedAt}}{{else}}—{{end}}</time></td>
+				<td class="cell-number" data-scan-field="seen">{{.FilesSeen}}</td>
+				<td class="cell-number" data-scan-field="indexed">{{.FilesIndexed}}</td>
+				<td class="cell-number" data-scan-field="removed">{{.FilesRemoved}}</td>
+				<td class="cell-actions"><a href="scans/{{.ID}}">Details</a></td>
 			</tr>
 			{{end}}
 		</tbody>
 	</table>
+	</div>
 </section>
 {{end}}
 {{end}}

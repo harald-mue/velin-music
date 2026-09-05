@@ -211,6 +211,29 @@ func TestAdminScanDetailAndSearchDiagnostics(t *testing.T) {
 		VALUES ('scan-1', 'root-1', 'song.flac', 'metadata', 'bad tags', ?)`, now); err != nil {
 		t.Fatalf("insert scan error: %v", err)
 	}
+	liveRoot := t.TempDir()
+	if _, err := database.Exec(`
+		INSERT INTO library_roots (id, path, created_at, updated_at)
+		VALUES ('root-live', ?, ?, ?)`, liveRoot, now, now); err != nil {
+		t.Fatalf("insert live root: %v", err)
+	}
+	if _, err := database.Exec(`
+		INSERT INTO scan_runs (id, root_id, status, started_at, files_seen, files_indexed)
+		VALUES ('scan-live', 'root-live', 'running', ?, 125000, 124900)`, now); err != nil {
+		t.Fatalf("insert live scan: %v", err)
+	}
+
+	rootsPageReq := httptest.NewRequest(http.MethodGet, "/admin/roots", nil)
+	rootsPageReq.AddCookie(cookie)
+	rootsPageRes := httptest.NewRecorder()
+	handler.ServeHTTP(rootsPageRes, rootsPageReq)
+	if rootsPageRes.Code != http.StatusOK ||
+		!strings.Contains(rootsPageRes.Body.String(), `data-scan-monitor="list"`) ||
+		!strings.Contains(rootsPageRes.Body.String(), "125000") ||
+		!strings.Contains(rootsPageRes.Body.String(), "data-local-time") ||
+		!strings.Contains(rootsPageRes.Body.String(), "static/velin-icon.svg") {
+		t.Fatalf("live scan admin page = %d %q", rootsPageRes.Code, rootsPageRes.Body.String())
+	}
 
 	scanReq := httptest.NewRequest(http.MethodGet, "/api/v1/admin/scans/scan-1", nil)
 	scanReq.AddCookie(cookie)
@@ -219,6 +242,16 @@ func TestAdminScanDetailAndSearchDiagnostics(t *testing.T) {
 	var scan scanRunResponse
 	if scanRes.Code != http.StatusOK || json.NewDecoder(scanRes.Body).Decode(&scan) != nil || scan.Status != "failed" {
 		t.Fatalf("get scan = %d %+v", scanRes.Code, scan)
+	}
+
+	scanPageReq := httptest.NewRequest(http.MethodGet, "/admin/scans/scan-1", nil)
+	scanPageReq.AddCookie(cookie)
+	scanPageRes := httptest.NewRecorder()
+	handler.ServeHTTP(scanPageRes, scanPageReq)
+	if scanPageRes.Code != http.StatusOK ||
+		!strings.Contains(scanPageRes.Body.String(), `href="../static/admin.css"`) ||
+		!strings.Contains(scanPageRes.Body.String(), `href="../roots"`) {
+		t.Fatalf("scan detail admin page = %d %q", scanPageRes.Code, scanPageRes.Body.String())
 	}
 
 	errorsReq := httptest.NewRequest(http.MethodGet, "/api/v1/admin/scans/scan-1/errors", nil)

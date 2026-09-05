@@ -18,9 +18,11 @@ Avoid excessive rounded cards, glassmorphism, generic SaaS dashboard styling, an
 
 The implemented phone theme uses the original near-black graphite `#111214` for the window, scaffold, top bar, mini-player, and navigation chrome. Material surface-container tokens share that same graphite so elevation overlays cannot introduce navy or blue bands. Ice-blue is reserved for active controls, seek progress, and the current track.
 
+The administration frontend uses the same graphite palette and geometric Velin mark. Data tables keep headers and rows on consistent heights, vertically center controls, render recent timestamps as compact browser-localized relative times with exact local values in tooltips, and use horizontal overflow rather than irregular wrapping when space is constrained. Long paths and diagnostics may wrap safely. Completed scans and active devices use a compact green checkmark instead of repeated status text. Active scans use an indeterminate ice-blue bar and live counters because a truthful percentage is unavailable until filesystem discovery finishes.
+
 ## Iconography and mark
 
-Velin's eventual icon family is custom, monochrome, geometric, simple, recognizable, and consistent in stroke/fill weight on a shared grid. Until that family exists, use coherent Material icons for navigation and actions rather than letters or text glyphs. A music note is not the primary brand mark. Explore an abstract geometric `V` that can also suggest stereo channels, waveform geometry, or a server/client connection.
+Velin's icon family is custom, monochrome, geometric, simple, recognizable, and consistent in stroke/fill weight on a shared grid. The abstract geometric `V` used by the Android launcher is also the administration header mark and browser icon. Use coherent Material icons for Android navigation and actions rather than letters or text glyphs. A music note is not the primary brand mark.
 
 ## Navigation
 

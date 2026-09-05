@@ -253,6 +253,40 @@ func TestTrackRepositoryRecordsCancelledScan(t *testing.T) {
 	}
 }
 
+func TestTrackRepositoryPersistsLiveProgress(t *testing.T) {
+	database := openLibraryTestDB(t)
+	rootID := addTestRoot(t, database, filepath.Join(t.TempDir(), "music"))
+	scan, err := NewTrackRepository(database).BeginScan(context.Background(), rootID)
+	if err != nil {
+		t.Fatalf("BeginScan() error = %v", err)
+	}
+	if err := scan.ReportProgress(context.Background(), 125000, 124900); err != nil {
+		t.Fatalf("ReportProgress() error = %v", err)
+	}
+	var seen, indexed int
+	if err := database.QueryRow("SELECT files_seen, files_indexed FROM scan_runs WHERE id = ?", scan.id).Scan(&seen, &indexed); err != nil {
+		t.Fatalf("read live progress: %v", err)
+	}
+	if seen != 125000 || indexed != 124900 {
+		t.Fatalf("live progress = (%d, %d), want (125000, 124900)", seen, indexed)
+	}
+	if err := scan.ReportProgress(context.Background(), 100, 90); err != nil {
+		t.Fatalf("ReportProgress(stale) error = %v", err)
+	}
+	if err := database.QueryRow("SELECT files_seen, files_indexed FROM scan_runs WHERE id = ?", scan.id).Scan(&seen, &indexed); err != nil {
+		t.Fatalf("read progress after stale report: %v", err)
+	}
+	if seen != 125000 || indexed != 124900 {
+		t.Fatalf("progress regressed to (%d, %d)", seen, indexed)
+	}
+	if err := scan.ReportProgress(context.Background(), 1, 2); err == nil {
+		t.Fatal("ReportProgress() accepted indexed count greater than seen count")
+	}
+	if err := scan.Fail(context.Background(), errors.New("test cleanup")); err == nil {
+		t.Fatal("Fail() error = nil")
+	}
+}
+
 func TestTrackRepositoryRejectsInvalidInput(t *testing.T) {
 	database := openLibraryTestDB(t)
 	rootID := addTestRoot(t, database, filepath.Join(t.TempDir(), "music"))

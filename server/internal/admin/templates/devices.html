@@ -8,35 +8,39 @@
 	<p class="lead">Registered Android clients. Revoked devices cannot access the library.</p>
 	{{if .Error}}<div class="error">{{.Error}}</div>{{end}}
 	{{if .Devices}}
-	<table>
+	<div class="table-scroll">
+	<table class="data-table">
 		<thead>
 			<tr>
 				<th>Name</th>
 				<th>Created</th>
 				<th>Last used</th>
 				<th>Status</th>
-				<th></th>
+				<th><span class="visually-hidden">Actions</span></th>
 			</tr>
 		</thead>
 		<tbody>
 			{{range .Devices}}
 			<tr>
 				<td>{{.Name}}</td>
-				<td class="muted">{{.CreatedAt}}</td>
-				<td class="muted">{{if .LastUsedAt}}{{.LastUsedAt}}{{else}}—{{end}}</td>
-				<td>{{if .RevokedAt}}<span class="muted">Revoked</span>{{else}}<span style="color:var(--ok)">Active</span>{{end}}</td>
-				<td>
+				<td class="muted cell-nowrap"><time datetime="{{.CreatedAt}}" data-local-time>{{.CreatedAt}}</time></td>
+				<td class="muted cell-nowrap"><time{{if .LastUsedAt}} datetime="{{.LastUsedAt}}"{{end}} data-local-time>{{if .LastUsedAt}}{{.LastUsedAt}}{{else}}—{{end}}</time></td>
+				<td class="cell-nowrap">{{if .RevokedAt}}<span class="muted">Revoked</span>{{else}}<span class="device-status status-completed" aria-label="active" title="Active">Active</span>{{end}}</td>
+				<td class="cell-actions">
 					{{if not .RevokedAt}}
-					<form method="post" action="/admin/devices/{{.ID}}/revoke" class="inline-form">
-						<input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-						<button type="submit" class="danger">Revoke</button>
-					</form>
+					<div class="row-actions">
+						<form method="post" action="devices/{{.ID}}/revoke">
+							<input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+							<button type="submit" class="danger">Revoke</button>
+						</form>
+					</div>
 					{{end}}
 				</td>
 			</tr>
 			{{end}}
 		</tbody>
 	</table>
+	</div>
 	{{else}}
 	<p class="muted">No devices have been paired yet.</p>
 	{{end}}

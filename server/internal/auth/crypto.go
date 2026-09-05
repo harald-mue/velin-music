@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 	"unicode"
@@ -130,19 +131,26 @@ func normalizePassword(value string) (string, error) {
 // NormalizeServerURL validates a public HTTP(S) server URL for QR payloads.
 func NormalizeServerURL(value string) (string, error) {
 	value = strings.TrimSpace(value)
-	if value == "" {
+	if value == "" || len(value) > 2048 || strings.Contains(value, "\\") {
 		return "", ErrInvalidServerURL
 	}
-	if len(value) > 2048 {
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Opaque != "" {
 		return "", ErrInvalidServerURL
 	}
-	if !strings.HasPrefix(value, "http://") && !strings.HasPrefix(value, "https://") {
+	parsed.Scheme = strings.ToLower(parsed.Scheme)
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return "", ErrInvalidServerURL
 	}
-	if strings.Contains(value, "@") {
+	if parsed.Host == "" || parsed.Hostname() == "" || parsed.User != nil {
 		return "", ErrInvalidServerURL
 	}
-	return strings.TrimRight(value, "/"), nil
+	if parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || strings.Contains(value, "#") {
+		return "", ErrInvalidServerURL
+	}
+	parsed.Path = strings.TrimRight(parsed.Path, "/")
+	parsed.RawPath = strings.TrimRight(parsed.RawPath, "/")
+	return parsed.String(), nil
 }
 
 func composeDeviceToken(deviceID, secret string) string {

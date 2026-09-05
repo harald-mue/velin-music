@@ -27,8 +27,8 @@ Android first-page library browsing/search, cursor pagination, album/artist/trac
 - [x] Media identity revalidation between discovery and parsing.
 - [x] Validated JPEG/PNG/GIF/WebP artwork, SHA-256 cache storage, existing-entry verification, and cover deduplication.
 - [x] Identity-based skipping of unchanged files, transactional track/FTS upserts, durable scan markers, and complete-scan-only deletion.
-- [x] Sequential multi-root scan orchestration with independent-root continuation, persisted file errors, and failed/cancelled preservation.
-- [x] Database-enforced one-running-scan-per-root invariant.
+- [x] Globally serialized, sequential multi-root scan orchestration with independent-root continuation, persisted file errors, throttled durable live counters, and failed/cancelled preservation.
+- [x] Database-enforced one-running-scan-per-root invariant plus an in-process global scan guard across manual, startup, and scheduled triggers.
 - [x] Album-cover reconciliation and cleanup of unreferenced album, artist, and cover database rows.
 - [x] Bounded keyset pagination for artist, album, and track queries with opaque filter-bound cursors.
 - [x] Ranked, literal-prefix FTS5 track search with bounded queries and query-bound keyset cursors.
@@ -44,9 +44,11 @@ Android first-page library browsing/search, cursor pagination, album/artist/trac
 - [x] Startup recovery for abandoned `running` scans and artwork-cache garbage collection.
 - [x] Optional startup scan and periodic scheduler for configured library roots.
 - [x] Admin scan error detail UI and search diagnostics.
+- [x] Graphite admin UI polish with the Android Velin mark, uniform table-row alignment, compact success-state checkmarks, browser-localized relative timestamps, responsive table overflow, bounded live scan progress polling, and reverse-proxy-prefix-safe links, forms, redirects, assets, and API calls.
+- [x] Admin security hardening with restrictive CSP/frame/MIME/referrer/permissions headers, no-store responses, structured credential-free pairing URL validation, and forwarded-header-resistant bounded rate limiting.
 - [x] Kotlin/Compose Android project with Gradle Wrapper, API 37 build, polished graphite/ice-blue theme, accessible Material iconography, primary navigation shell, and unit tests.
 - [x] Android QR/manual pairing with CameraX/ZXing, strict payload parsing, bounded OkHttp response handling, HTTP(S) URL normalization, safe errors, and Android Keystore-backed AES-GCM credential storage.
-- [x] Server administration pairing result renders an ephemeral QR image directly from the token-free `server_url`/`code` payload.
+- [x] Server administration pairing defaults `server_url` to the editable browser-visible base (including a reverse-proxy path prefix) and renders an ephemeral QR image directly from the token-free `server_url`/`code` payload.
 - [x] Authenticated Android OkHttp client with bearer injection, bounded JSON decoding, revocation handling, and initial status/artist/album/track/search loading.
 - [x] Android Home summary, searchable track results, and first-page Library views with loading, empty, and recoverable-error states.
 - [x] Exported Android Media3 `MediaLibraryService` owning ExoPlayer and a `MediaLibrarySession`, with media audio focus, becoming-noisy handling, Android Auto media declaration, and foreground-service manifest declarations.
@@ -71,7 +73,8 @@ Android first-page library browsing/search, cursor pagination, album/artist/trac
 - Internal indexing and browse functionality is reachable through admin HTTP/UI triggers and optional environment-driven startup and scheduled full-library scans; public status/pairing, admin JSON/HTML (including library roots and scan triggers), and bearer-protected library browse/search/artwork/streaming routes are wired.
 - A process crash could leave a scan marked `running` until the next server startup; startup maintenance now marks those scans failed, records an interrupted error, and clears temporary markers.
 - Artwork-cache files for removed cover rows are garbage-collected at startup.
-- Album identity currently uses exact title, album-artist ID, and year without a schema-level unique constraint; correctness relies on the single SQLite connection and sequential scanner, so database concurrency must not be widened without strengthening this invariant.
+- Album identity currently uses exact title, album-artist ID, and year without a schema-level unique constraint; correctness relies on the single SQLite connection and globally serialized scanner, so database concurrency must not be widened without strengthening this invariant.
+- Scan progress reports files seen and indexed, not a percentage: obtaining an exact total first would require a second complete filesystem walk. Counters are checkpointed at most once per second or per 100 files and finalized exactly after discovery/reconciliation.
 - Broad one-character search prefixes can rank many FTS rows; performance still needs benchmarking against the 100,000-track target and future authenticated endpoints need rate limits.
 - MP3 duration is estimated from bitrate when Xing/VBRI frame counts are unavailable.
 - There is no released-database upgrade fixture or backup/downgrade policy yet.

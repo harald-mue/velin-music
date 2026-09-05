@@ -400,7 +400,7 @@ Additional administrators, password rotation, and session listing/revocation rem
 
 ## ADR-019 — Environment-driven startup scan and periodic scheduler
 
-Status: Accepted
+Status: Accepted; overlap policy superseded by ADR-022
 
 Date: 2026-09-04
 
@@ -414,7 +414,7 @@ Expose optional process-level scan automation through `VELIN_SCAN_ON_STARTUP` (d
 
 ### Consequences
 
-Scan automation settings are not persisted in the database and require process restart to change. Scheduled ticks that arrive during an active full-library scan are skipped with an info log. Admin `POST /api/v1/admin/scans` now returns `409 scan_running` when a full-library scan is already active. Per-root scans remain available while a full-library scan runs, subject to the existing one-running-scan-per-root database guard.
+Scan automation settings are not persisted in the database and require process restart to change. Scheduled ticks that arrive during an active full-library scan are skipped with an info log. Admin `POST /api/v1/admin/scans` now returns `409 scan_running` when a full-library scan is already active. The original implementation allowed per-root scans during a full-library scan. ADR-022 supersedes that overlap policy: all production scan triggers now share one global guard.
 
 ## ADR-020 — MediaLibraryService for Android Auto and phone playback
 
@@ -455,3 +455,43 @@ Persist a single saved-queue JSON file in the app’s private files directory, k
 ### Consequences
 
 This is not a playlist library: there is one slot per paired device on that phone, no names, and no server copy. Unavailable rows disappear from the slot on the next save. Tokens never enter the file.
+
+## ADR-022 — Globally serialized scans with bounded live progress
+
+Status: Accepted
+
+Date: 2026-09-05
+
+### Context
+
+A filesystem scan can run for hours on a library with 100,000 or more tracks. The administration UI previously showed zero counters until completion, while separate per-root and full-library triggers could run different roots concurrently and multiply filesystem, metadata-parser, artwork-cache, and SQLite pressure. Computing a percentage by pre-counting would double the filesystem walk and still race with source changes.
+
+### Decision
+
+Serialize all production scan work through one `ScanService` guard shared by per-root, full-library, startup, and scheduled triggers. Create the first persisted `running` row before a trigger returns. Keep callback-driven discovery and sequential root processing so memory does not grow with library size. Checkpoint files-seen and files-indexed counters to the existing scan row after at most 100 processed files or one second, then recompute exact final counts from reconciliation state. The administration page polls the bounded ten-run JSON response with backoff and displays an indeterminate progress bar plus counters rather than a fabricated percentage.
+
+### Rationale
+
+One active scanner gives predictable I/O and database pressure on small self-hosted systems. Throttled constant-size status writes make long-running work observable without repeatedly counting a potentially huge marker table or retaining paths in memory. Synchronous run creation closes the redirect race in which the UI could miss a newly started scan.
+
+### Consequences
+
+Scanning different roots in parallel is intentionally unavailable. Conflicting manual requests return `scan_running`; startup and scheduled triggers are skipped. The UI may show counters up to one second or 99 files behind and reloads only at root-run boundaries. Existing indexed content remains readable during discovery, and destructive reconciliation still occurs only after a complete successful root scan.
+
+## ADR-023 — Preserve browser-visible reverse-proxy path prefixes
+
+Status: Accepted
+
+Date: 2026-09-05
+
+### Context
+
+Velin may later be exposed locally below a path such as `https://home.example/velin/` while a reverse proxy strips `/velin` before forwarding requests. Root-absolute admin links, redirects, assets, and API calls would escape that prefix, and using only `window.location.origin` in a pairing payload would send Android to the wrong API path.
+
+### Decision
+
+Use document-relative URLs throughout server-rendered administration pages and relative HTTP `Location` responses for admin redirects. Derive the browser-visible server base by removing the final `/admin/...` portion from the current URL, preserving scheme, host, port, and preceding path. Use that base for scan-status calls and as the editable pairing default. Android continues to append endpoint segments to, rather than replace, the normalized server base path.
+
+### Consequences
+
+A reverse proxy can mount Velin below one external prefix when it forwards both `<prefix>/admin/*` and `<prefix>/api/*` after stripping the same prefix. The Go server still registers direct `/admin/*` and `/api/*` routes and does not infer routing from untrusted forwarded-prefix headers. Deployments must not expose the two route groups below different external prefixes.

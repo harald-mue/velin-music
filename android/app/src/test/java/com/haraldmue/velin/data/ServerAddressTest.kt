@@ -15,6 +15,10 @@ class ServerAddressTest {
             "https://music.example.test/api/v1/pair",
             ServerAddress.pairingEndpoint("https://music.example.test"),
         )
+        assertEquals(
+            "https://music.example.test/velin/api/v1/pair",
+            ServerAddress.pairingEndpoint("https://music.example.test/velin"),
+        )
     }
 
     @Test

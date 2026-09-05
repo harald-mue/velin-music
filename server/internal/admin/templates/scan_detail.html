@@ -3,33 +3,42 @@
 {{end}}
 
 {{define "scan_detail-body"}}
-<section class="panel">
-	<p><a href="/admin/roots">← Back to library</a></p>
+<section class="panel"{{if .ScanRunning}} data-scan-monitor="detail" data-scan-id="{{.Scan.ID}}"{{end}}>
+	<p><a href="{{.AdminURLPrefix}}roots">← Back to library</a></p>
 	<h1>Scan details</h1>
 	<p class="lead">Root-relative file paths are shown only in this administration UI.</p>
 
+	{{if .ScanRunning}}
+	<div class="scan-activity" role="status" aria-live="polite">
+		<strong>Library scan in progress</strong>
+		<div class="scan-progress" role="progressbar" aria-label="Library scan in progress"></div>
+		<p class="muted">Counters update automatically. The final total is known after discovery completes.</p>
+	</div>
+	{{end}}
+
 	<table class="meta-table">
 		<tbody>
-			<tr><th>Scan ID</th><td class="mono">{{.Scan.ID}}</td></tr>
-			<tr><th>Root</th><td class="mono">{{.Scan.RootID}}</td></tr>
-			<tr><th>Status</th><td><span class="status-{{.Scan.Status}}">{{.Scan.Status}}</span></td></tr>
-			<tr><th>Started</th><td class="muted">{{.Scan.StartedAt}}</td></tr>
-			<tr><th>Finished</th><td class="muted">{{if .Scan.FinishedAt}}{{.Scan.FinishedAt}}{{else}}—{{end}}</td></tr>
-			<tr><th>Files seen</th><td>{{.Scan.FilesSeen}}</td></tr>
-			<tr><th>Files indexed</th><td>{{.Scan.FilesIndexed}}</td></tr>
-			<tr><th>Files removed</th><td>{{.Scan.FilesRemoved}}</td></tr>
+			<tr><th>Scan ID</th><td class="mono wrap">{{.Scan.ID}}</td></tr>
+			<tr><th>Root</th><td class="mono wrap">{{if .Scan.RootPath}}{{.Scan.RootPath}}{{else}}{{.Scan.RootID}}{{end}}</td></tr>
+			<tr><th>Status</th><td><span class="scan-status status-{{.Scan.Status}}" data-scan-field="status"{{if eq .Scan.Status "completed"}} aria-label="completed" title="Completed"{{end}}>{{.Scan.Status}}</span></td></tr>
+			<tr><th>Started</th><td class="muted"><time datetime="{{.Scan.StartedAt}}" data-local-time>{{.Scan.StartedAt}}</time></td></tr>
+			<tr><th>Finished</th><td class="muted"><time{{if .Scan.FinishedAt}} datetime="{{.Scan.FinishedAt}}"{{end}} data-local-time data-scan-field="finished">{{if .Scan.FinishedAt}}{{.Scan.FinishedAt}}{{else}}—{{end}}</time></td></tr>
+			<tr><th>Files seen</th><td data-scan-field="seen">{{.Scan.FilesSeen}}</td></tr>
+			<tr><th>Files indexed</th><td data-scan-field="indexed">{{.Scan.FilesIndexed}}</td></tr>
+			<tr><th>Files removed</th><td data-scan-field="removed">{{.Scan.FilesRemoved}}</td></tr>
 			<tr><th>Errors</th><td>{{.ScanErrorTotal}}</td></tr>
 		</tbody>
 	</table>
 </section>
 
-<section class="panel" style="margin-top:1.5rem">
+<section class="panel">
 	<h2>Scan errors</h2>
 	{{if .ScanErrors}}
 	{{if lt (len .ScanErrors) .ScanErrorTotal}}
 	<p class="muted">Showing the first {{len .ScanErrors}} of {{.ScanErrorTotal}} errors.</p>
 	{{end}}
-	<table>
+	<div class="table-scroll">
+	<table class="data-table">
 		<thead>
 			<tr>
 				<th>Source</th>
@@ -41,14 +50,15 @@
 		<tbody>
 			{{range .ScanErrors}}
 			<tr>
-				<td class="mono">{{if .SourceName}}{{.SourceName}}{{else}}—{{end}}</td>
-				<td class="mono">{{.ErrorCode}}</td>
+				<td class="mono path-cell">{{if .SourceName}}{{.SourceName}}{{else}}—{{end}}</td>
+				<td class="mono cell-nowrap">{{.ErrorCode}}</td>
 				<td>{{.Message}}</td>
-				<td class="muted">{{.CreatedAt}}</td>
+				<td class="muted cell-nowrap"><time datetime="{{.CreatedAt}}" data-local-time>{{.CreatedAt}}</time></td>
 			</tr>
 			{{end}}
 		</tbody>
 	</table>
+	</div>
 	{{else}}
 	<p class="muted">No errors were recorded for this scan.</p>
 	{{end}}

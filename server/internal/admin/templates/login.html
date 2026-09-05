@@ -7,7 +7,7 @@
 	<h1>Sign in</h1>
 	<p class="lead">Administrator access for device management and pairing.</p>
 	{{if .Error}}<div class="error">{{.Error}}</div>{{end}}
-	<form method="post" action="/admin/login">
+	<form method="post" action="login">
 		<label for="username">Username</label>
 		<input id="username" name="username" type="text" autocomplete="username" required>
 		<label for="password">Password</label>

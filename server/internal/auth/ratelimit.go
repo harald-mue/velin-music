@@ -1,17 +1,22 @@
 package auth
 
 import (
+	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
 
 // RateLimiter enforces a bounded request count per key within a sliding window.
+const maxRateLimitKeys = 10000
+
 type RateLimiter struct {
-	mu     sync.Mutex
-	limit  int
-	window time.Duration
-	hits   map[string][]time.Time
+	mu          sync.Mutex
+	limit       int
+	window      time.Duration
+	hits        map[string][]time.Time
+	lastCleanup time.Time
 }
 
 // NewRateLimiter creates a limiter that allows limit hits per window duration.
@@ -33,6 +38,26 @@ func (l *RateLimiter) Allow(key string) bool {
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
+
+	if l.lastCleanup.IsZero() || now.Sub(l.lastCleanup) >= l.window {
+		for existingKey, existingHits := range l.hits {
+			kept := existingHits[:0]
+			for _, timestamp := range existingHits {
+				if timestamp.After(cutoff) {
+					kept = append(kept, timestamp)
+				}
+			}
+			if len(kept) == 0 {
+				delete(l.hits, existingKey)
+			} else {
+				l.hits[existingKey] = kept
+			}
+		}
+		l.lastCleanup = now
+	}
+	if _, exists := l.hits[key]; !exists && len(l.hits) >= maxRateLimitKeys {
+		return false
+	}
 
 	timestamps := l.hits[key]
 	filtered := timestamps[:0]
@@ -62,9 +87,10 @@ func (l *RateLimiter) Limit(next http.Handler) http.Handler {
 }
 
 func clientKey(r *http.Request) string {
-	host := r.RemoteAddr
-	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
-		host = forwarded
+	remoteAddress := strings.TrimSpace(r.RemoteAddr)
+	host, _, err := net.SplitHostPort(remoteAddress)
+	if err == nil && host != "" {
+		return host
 	}
-	return host
+	return remoteAddress
 }

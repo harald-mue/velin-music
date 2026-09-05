@@ -299,6 +299,36 @@ func (s *Scan) RecordError(ctx context.Context, sourceName, code, message string
 	return nil
 }
 
+// ReportProgress persists bounded live counters for administration clients.
+// Callers should throttle updates; the final counts are recomputed exactly by
+// Finish from reconciliation state.
+func (s *Scan) ReportProgress(ctx context.Context, filesSeen, filesIndexed int) error {
+	if err := s.checkUsable(); err != nil {
+		return err
+	}
+	if filesSeen < 0 || filesIndexed < 0 || filesIndexed > filesSeen {
+		return errors.New("invalid scan progress")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	result, err := s.repository.db.ExecContext(ctx, `
+		UPDATE scan_runs
+		SET files_seen = MAX(files_seen, ?), files_indexed = MAX(files_indexed, ?)
+		WHERE id = ? AND status = 'running'`, filesSeen, filesIndexed, s.id)
+	if err != nil {
+		return fmt.Errorf("report scan progress: %w", err)
+	}
+	updated, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check reported scan progress: %w", err)
+	}
+	if updated != 1 {
+		return errors.New("library scan is no longer running")
+	}
+	return nil
+}
+
 // Finish commits reconciliation: only files not seen during this complete
 // scan are removed. It also records scan counts and cleans temporary markers.
 func (s *Scan) Finish(ctx context.Context) error {

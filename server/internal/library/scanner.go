@@ -42,13 +42,23 @@ func (s *Scanner) ScanAll(ctx context.Context) ([]ScanResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	return s.scanRoots(ctx, roots, nil)
+}
+
+func (s *Scanner) scanRoots(ctx context.Context, roots []Root, firstScan *Scan) ([]ScanResult, error) {
 	results := make([]ScanResult, 0, len(roots))
 	var scanErrors []error
-	for _, root := range roots {
+	for index, root := range roots {
 		if err := ctx.Err(); err != nil {
 			return results, err
 		}
-		result, err := s.ScanRoot(ctx, root)
+		var result ScanResult
+		var err error
+		if index == 0 && firstScan != nil {
+			result, err = s.scanPreparedRoot(ctx, root, firstScan)
+		} else {
+			result, err = s.ScanRoot(ctx, root)
+		}
 		results = append(results, result)
 		if err == nil {
 			continue
@@ -66,20 +76,50 @@ func (s *Scanner) ScanAll(ctx context.Context) ([]ScanResult, error) {
 // tracks to be deleted. Discovery or database failures fail the whole scan.
 func (s *Scanner) ScanRoot(ctx context.Context, root Root) (ScanResult, error) {
 	result := ScanResult{RootID: root.ID}
-	if s == nil || s.tracks == nil {
-		return result, errors.New("scanner is not configured")
-	}
-	if err := ctx.Err(); err != nil {
-		return result, err
-	}
-
-	scan, err := s.tracks.BeginScan(ctx, root.ID)
+	scan, err := s.prepareRootScan(ctx, root)
 	if err != nil {
 		return result, err
+	}
+	return s.scanPreparedRoot(ctx, root, scan)
+}
+
+func (s *Scanner) prepareRootScan(ctx context.Context, root Root) (*Scan, error) {
+	if s == nil || s.tracks == nil {
+		return nil, errors.New("scanner is not configured")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return s.tracks.BeginScan(ctx, root.ID)
+}
+
+func (s *Scanner) scanPreparedRoot(ctx context.Context, root Root, scan *Scan) (ScanResult, error) {
+	result := ScanResult{RootID: root.ID}
+	if scan == nil {
+		return result, errors.New("scan is not prepared")
+	}
+
+	const progressBatchSize = 100
+	const progressInterval = time.Second
+	lastReportedSeen := 0
+	lastReportAt := time.Now()
+	reportProgress := func(force bool) error {
+		if !force && result.FilesSeen-lastReportedSeen < progressBatchSize && time.Since(lastReportAt) < progressInterval {
+			return nil
+		}
+		if err := scan.ReportProgress(ctx, result.FilesSeen, result.FilesIndexed); err != nil {
+			return err
+		}
+		lastReportedSeen = result.FilesSeen
+		lastReportAt = time.Now()
+		return nil
 	}
 	fail := func(cause error, source, code, message string) error {
 		persistContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
+		if progressErr := scan.ReportProgress(persistContext, result.FilesSeen, result.FilesIndexed); progressErr != nil {
+			cause = fmt.Errorf("record scan progress: %w", progressErr)
+		}
 		if source != "" || code != "" {
 			if recordErr := scan.RecordError(persistContext, source, code, message); recordErr != nil {
 				cause = fmt.Errorf("record scan failure: %w", recordErr)
@@ -91,7 +131,7 @@ func (s *Scanner) ScanRoot(ctx context.Context, root Root) (ScanResult, error) {
 		return cause
 	}
 
-	err = Discover(ctx, root, func(media MediaFile) error {
+	err := Discover(ctx, root, func(media MediaFile) error {
 		result.FilesSeen++
 		unchanged, err := scan.RetainUnchanged(ctx, media)
 		if err != nil {
@@ -99,7 +139,7 @@ func (s *Scanner) ScanRoot(ctx context.Context, root Root) (ScanResult, error) {
 		}
 		if unchanged {
 			result.FilesIndexed++
-			return nil
+			return reportProgress(false)
 		}
 		metadata, parseErr := ParseMetadata(ctx, root, media)
 		if parseErr != nil {
@@ -110,7 +150,10 @@ func (s *Scanner) ScanRoot(ctx context.Context, root Root) (ScanResult, error) {
 			if err := scan.RecordError(ctx, media.RelativePath, "metadata", safeScanMessage(parseErr, root)); err != nil {
 				return err
 			}
-			return scan.MarkSeen(ctx, media.RelativePath)
+			if err := scan.MarkSeen(ctx, media.RelativePath); err != nil {
+				return err
+			}
+			return reportProgress(false)
 		}
 		if upsertErr := scan.Upsert(ctx, media, metadata); upsertErr != nil {
 			if errors.Is(upsertErr, context.Canceled) || errors.Is(upsertErr, context.DeadlineExceeded) {
@@ -120,10 +163,13 @@ func (s *Scanner) ScanRoot(ctx context.Context, root Root) (ScanResult, error) {
 			if err := scan.RecordError(ctx, media.RelativePath, "index", safeScanMessage(upsertErr, root)); err != nil {
 				return err
 			}
-			return scan.MarkSeen(ctx, media.RelativePath)
+			if err := scan.MarkSeen(ctx, media.RelativePath); err != nil {
+				return err
+			}
+			return reportProgress(false)
 		}
 		result.FilesIndexed++
-		return nil
+		return reportProgress(false)
 	})
 	if err != nil {
 		result.Completed = false
@@ -131,6 +177,10 @@ func (s *Scanner) ScanRoot(ctx context.Context, root Root) (ScanResult, error) {
 			return result, fail(err, "", "", "")
 		}
 		return result, fail(err, "", "discovery", "library discovery failed")
+	}
+	if err := reportProgress(true); err != nil {
+		result.Completed = false
+		return result, fail(err, "", "progress", "scan progress could not be recorded")
 	}
 	if err := scan.Finish(ctx); err != nil {
 		result.Completed = false

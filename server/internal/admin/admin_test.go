@@ -62,7 +62,7 @@ func TestAdminSetupLoginAndPairingFlow(t *testing.T) {
 	}
 	setupBody, _ := io.ReadAll(setupPage.Body)
 	_ = setupPage.Body.Close()
-	if setupPage.StatusCode != http.StatusOK || !strings.Contains(string(setupBody), "Set up Velin") {
+	if setupPage.StatusCode != http.StatusOK || !strings.Contains(string(setupBody), "Set up Velin") || !strings.Contains(string(setupBody), `href="static/admin.css"`) {
 		t.Fatalf("setup page = %d %q", setupPage.StatusCode, setupBody)
 	}
 
@@ -105,7 +105,7 @@ func TestAdminSetupLoginAndPairingFlow(t *testing.T) {
 	}
 	pairingBody, _ := io.ReadAll(pairingRes.Body)
 	_ = pairingRes.Body.Close()
-	if pairingRes.StatusCode != http.StatusOK || !strings.Contains(string(pairingBody), `name="csrf_token"`) {
+	if pairingRes.StatusCode != http.StatusOK || !strings.Contains(string(pairingBody), `name="csrf_token"`) || !strings.Contains(string(pairingBody), "data-browser-origin-default") {
 		t.Fatalf("pairing page = %d", pairingRes.StatusCode)
 	}
 	csrf := extractInputValue(string(pairingBody), "csrf_token")
@@ -129,7 +129,7 @@ func TestAdminSetupLoginAndPairingFlow(t *testing.T) {
 	}
 	resultBody, _ := io.ReadAll(pairPostRes.Body)
 	_ = pairPostRes.Body.Close()
-	if pairPostRes.StatusCode != http.StatusOK || !strings.Contains(string(resultBody), "Pairing code created") {
+	if pairPostRes.StatusCode != http.StatusOK || !strings.Contains(string(resultBody), "Pairing code created") || !strings.Contains(string(resultBody), "data-local-time") {
 		t.Fatalf("pairing result = %d %q", pairPostRes.StatusCode, resultBody)
 	}
 	if !strings.Contains(string(resultBody), "http://velin.local:8080") || !strings.Contains(string(resultBody), "server_url") {
@@ -193,7 +193,7 @@ func TestAdminRootsPageAddAndScan(t *testing.T) {
 		t.Fatalf("POST roots: %v", err)
 	}
 	_ = addRes.Body.Close()
-	if addRes.StatusCode != http.StatusSeeOther || addRes.Header.Get("Location") != "/admin/roots" {
+	if addRes.StatusCode != http.StatusSeeOther || addRes.Header.Get("Location") != "roots" {
 		t.Fatalf("add root status = %d location = %q", addRes.StatusCode, addRes.Header.Get("Location"))
 	}
 
@@ -248,6 +248,50 @@ func TestAdminScanDetailAndSearchPages(t *testing.T) {
 	}
 }
 
+func TestAdminBrandAssetsAreEmbedded(t *testing.T) {
+	handler := openAdminTestHandler(t)
+	for _, test := range []struct {
+		path        string
+		contentType string
+		contains    string
+	}{
+		{path: "/admin/static/velin-icon.svg", contentType: "image/svg+xml", contains: "M34 34h9.5"},
+		{path: "/admin/static/admin.js", contentType: "text/javascript", contains: "Intl.RelativeTimeFormat"},
+		{path: "/admin/static/admin.js", contentType: "text/javascript", contains: "lastIndexOf(adminMarker)"},
+		{path: "/admin/static/admin.js", contentType: "text/javascript", contains: `current.username = ""`},
+		{path: "/admin/static/admin.css", contentType: "text/css", contains: ".device-status.status-completed"},
+	} {
+		request := httptest.NewRequest(http.MethodGet, test.path, nil)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("GET %s status = %d", test.path, response.Code)
+		}
+		if !strings.Contains(response.Header().Get("Content-Type"), test.contentType) {
+			t.Fatalf("GET %s content type = %q", test.path, response.Header().Get("Content-Type"))
+		}
+		if !strings.Contains(response.Body.String(), test.contains) {
+			t.Fatalf("GET %s body does not contain %q", test.path, test.contains)
+		}
+		if response.Header().Get("Cache-Control") != "no-store" ||
+			response.Header().Get("X-Content-Type-Options") != "nosniff" ||
+			response.Header().Get("X-Frame-Options") != "DENY" ||
+			!strings.Contains(response.Header().Get("Content-Security-Policy"), "frame-ancestors 'none'") {
+			t.Fatalf("GET %s security headers = %v", test.path, response.Header())
+		}
+	}
+}
+
+func TestAdminRootRedirectIsPrefixRelative(t *testing.T) {
+	handler := openAdminTestHandler(t)
+	request := httptest.NewRequest(http.MethodGet, "/admin", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusMovedPermanently || response.Header().Get("Location") != "admin/" {
+		t.Fatalf("admin root redirect = %d %q", response.Code, response.Header().Get("Location"))
+	}
+}
+
 func TestAdminProtectedPagesRedirectToLogin(t *testing.T) {
 	server := httptest.NewServer(openAdminTestHandler(t))
 	t.Cleanup(server.Close)
@@ -261,7 +305,7 @@ func TestAdminProtectedPagesRedirectToLogin(t *testing.T) {
 		t.Fatalf("GET devices: %v", err)
 	}
 	_ = res.Body.Close()
-	if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/admin/login" {
+	if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "login" {
 		t.Fatalf("status = %d location = %q", res.StatusCode, res.Header.Get("Location"))
 	}
 }

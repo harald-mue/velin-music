@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -171,5 +172,38 @@ func TestRateLimiterBlocksRepeatedHits(t *testing.T) {
 	}
 	if !limiter.Allow("other") {
 		t.Fatal("rate limiter blocked unrelated client")
+	}
+}
+
+func TestRateLimiterUsesRemoteIPAndIgnoresForwardedHeaders(t *testing.T) {
+	limiter := NewRateLimiter(2, time.Minute)
+	handler := limiter.Limit(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	for attempt := 0; attempt < 3; attempt++ {
+		request := httptest.NewRequest(http.MethodPost, "/login", nil)
+		request.RemoteAddr = fmt.Sprintf("192.0.2.10:%d", 10000+attempt)
+		request.Header.Set("X-Forwarded-For", fmt.Sprintf("198.51.100.%d", attempt+1))
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		want := http.StatusNoContent
+		if attempt == 2 {
+			want = http.StatusTooManyRequests
+		}
+		if response.Code != want {
+			t.Fatalf("attempt %d status = %d, want %d", attempt+1, response.Code, want)
+		}
+	}
+}
+
+func TestRateLimiterBoundsDistinctClientKeys(t *testing.T) {
+	limiter := NewRateLimiter(1, time.Hour)
+	for index := 0; index < maxRateLimitKeys; index++ {
+		if !limiter.Allow(fmt.Sprintf("client-%d", index)) {
+			t.Fatalf("client %d was unexpectedly rejected", index)
+		}
+	}
+	if limiter.Allow("overflow-client") {
+		t.Fatal("rate limiter accepted a key beyond its bounded capacity")
 	}
 }

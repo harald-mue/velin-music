@@ -24,7 +24,7 @@ Milestones are intentionally broad. **Complete** means implemented and validated
 - identity-based unchanged-file skipping, transaction-safe track upserts, and complete-scan-only deletion
 - embedded artwork validation, content-addressed caching, and cover association
 - sequential multi-root orchestration, persisted per-file errors, and scan counts
-- explicit failed/cancelled scan preservation and one-running-scan-per-root database guard
+- explicit failed/cancelled scan preservation, one-running-scan-per-root database guard, and globally serialized production scan orchestration
 
 The scanner is call-driven internal functionality. Admin/API triggers, optional startup scanning, and periodic scheduling are wired; scan settings are not stored in SQLite.
 
@@ -57,6 +57,7 @@ Authentication precedes protected library, artwork, and streaming endpoints so n
 ## M7 — Administration frontend — **complete**
 
 - **Complete:** dashboard, bootstrap setup, login, devices, pairing-code pages, library-root/scan management, scan error detail, and search diagnostics using the existing session/CSRF contract
+- **Complete:** shared Android/admin Velin mark, consistently aligned data tables, and bounded polling of throttled live scan counters
 
 ## M8 — Android foundation — **complete**
 

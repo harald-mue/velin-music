@@ -85,11 +85,5 @@ func ClearSessionCookie(w http.ResponseWriter, secure bool) {
 }
 
 func RequestSecureCookies(r *http.Request, configured bool) bool {
-	if configured {
-		return true
-	}
-	if r.TLS != nil {
-		return true
-	}
-	return r.Header.Get("X-Forwarded-Proto") == "https"
+	return configured || r.TLS != nil
 }

@@ -96,6 +96,46 @@ Then add `/archive` in the admin UI.
 - If the proxy exposes a path prefix, forward both `<prefix>/admin/*` and `<prefix>/api/*` after stripping the same prefix. See [`API.md`](API.md) and ADR-023.
 - Pairing `server_url` should be the URL the Android device can reach (LAN IP, hostname, or prefix-preserving HTTPS URL). The admin form defaults from the browser address bar.
 
+### Cloudflare Tunnel and playback diagnostics
+
+Cloudflare Tunnel can proxy downloads and byte-range requests; do not assume that the tunnel itself is incompatible with audio. Browse/search succeeding proves only that small authenticated JSON requests work. Playback additionally needs an authenticated `GET /api/v1/tracks/{id}/stream`, a valid media response, and byte-range behavior.
+
+Use the same server, image, APK, and track for an A/B test:
+
+1. Pair through `http://<lan-ip>:<VELIN_PORT>` and play the track.
+2. Pair through the final public HTTPS URL and play the same track.
+3. If behavior differs, compare the authenticated response bytes rather than changing proxy settings blindly.
+
+If LAN playback fails too, investigate the container mount, file identity, Android service, and media parser before Cloudflare. If only the public URL fails, create a temporary device named `curl-debug` and copy its one-time pairing code. From a trusted machine with this repository, run:
+
+```sh
+scripts/debug-stream.sh https://music.example.com http://192.0.2.10:8081
+```
+
+Use the final public base URL, including any path prefix, and the directly reachable origin base. The script prompts without echo for the one-time code, obtains a temporary token, selects one track, requests the same first MiB from both URLs, and compares hashes. It keeps credentials in a mode-`0600` temporary directory, removes them on exit, and never prints the token. Revoke `curl-debug` in the admin UI afterward.
+
+Both responses should normally have:
+
+- status `206 Partial Content`;
+- `Content-Range: bytes 0-1048575/<size>`;
+- `Accept-Ranges: bytes`;
+- `Content-Type: audio/flac` or `audio/mpeg`;
+- exactly 1,048,576 response bytes with matching hashes.
+
+Interpret differences before changing tunnel settings:
+
+| Public result | Likely boundary |
+| --- | --- |
+| `301`/`302` | Wrong public base or redirect rule. Android deliberately refuses stream redirects so its bearer token cannot leak. Pair with the final URL. |
+| `401` | Authorization did not reach Velin or the token/device was revoked. |
+| `403` or HTML | Cloudflare Access/WAF/Bot challenge intercepted `/api/*`; native clients cannot solve browser challenges. |
+| `404` | Public path prefix and tunnel ingress disagree. Both `<prefix>/admin/*` and `<prefix>/api/*` must reach Velin. |
+| `502`/`504`/`524` | Tunnel-to-origin connection or timeout problem; inspect `cloudflared` logs. |
+| `200` without `Content-Range` | The Range header was removed or ignored. Initial playback may work, but seeking and extractor reads can fail. |
+| Correct `206` and matching bytes | The tunnel transport works for the sample. Capture Android `adb logcat` and investigate the device/client path instead of changing Cloudflare blindly. |
+
+Do not enable HTTP/1.1-only mode, disable chunked encoding, or relax authentication without evidence from this comparison. A Cloudflare Access policy, if used, must allow native `/api/*` requests without an interactive HTML login while Velin still enforces its bearer token.
+
 ## What this image cannot do
 
 - No shell: `docker compose exec velin sh` will fail. Inspect logs with `docker compose logs -f`.

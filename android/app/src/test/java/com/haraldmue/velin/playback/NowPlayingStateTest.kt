@@ -88,4 +88,12 @@ class NowPlayingStateTest {
         assertEquals("2:03", formatPlaybackTime(123_000))
         assertEquals("1:02:03", formatPlaybackTime(3_723_000))
     }
+
+    @Test
+    fun playbackErrorIncludesTheMedia3Code() {
+        assertEquals(
+            "Playback failed (IO_NETWORK_CONNECTION_FAILED). Check the server and proxy stream logs.",
+            playbackErrorMessage("ERROR_CODE_IO_NETWORK_CONNECTION_FAILED"),
+        )
+    }
 }

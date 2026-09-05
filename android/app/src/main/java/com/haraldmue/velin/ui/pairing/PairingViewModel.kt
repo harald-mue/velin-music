@@ -28,6 +28,7 @@ class PairingViewModel(
     private val pairingGateway: PairingGateway,
     private val credentialStore: CredentialStore,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val onCredentialsChanged: () -> Unit = {},
 ) : ViewModel() {
     private val mutableState = MutableStateFlow<PairingUiState>(PairingUiState.Loading)
     val state: StateFlow<PairingUiState> = mutableState.asStateFlow()
@@ -46,6 +47,7 @@ class PairingViewModel(
             try {
                 val credentials = pairingGateway.pair(serverUrl, code)
                 withContext(ioDispatcher) { credentialStore.save(credentials) }
+                onCredentialsChanged()
                 mutableState.value = PairingUiState.Paired(credentials)
             } catch (error: IllegalArgumentException) {
                 mutableState.value = PairingUiState.Error(error.message ?: "Invalid pairing details.")
@@ -68,6 +70,7 @@ class PairingViewModel(
     fun disconnect() {
         viewModelScope.launch {
             withContext(ioDispatcher) { credentialStore.clear() }
+            onCredentialsChanged()
             mutableState.value = PairingUiState.Unpaired
         }
     }
@@ -76,10 +79,15 @@ class PairingViewModel(
 class PairingViewModelFactory(
     private val pairingGateway: PairingGateway,
     private val credentialStore: CredentialStore,
+    private val onCredentialsChanged: () -> Unit = {},
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         require(modelClass.isAssignableFrom(PairingViewModel::class.java))
-        return PairingViewModel(pairingGateway, credentialStore) as T
+        return PairingViewModel(
+            pairingGateway = pairingGateway,
+            credentialStore = credentialStore,
+            onCredentialsChanged = onCredentialsChanged,
+        ) as T
     }
 }

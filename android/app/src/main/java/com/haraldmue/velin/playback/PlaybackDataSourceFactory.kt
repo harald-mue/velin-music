@@ -5,6 +5,7 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import com.haraldmue.velin.data.CredentialStore
 import com.haraldmue.velin.data.DeviceCredentials
 import com.haraldmue.velin.data.ServerAddress
 import okhttp3.HttpUrl
@@ -16,23 +17,37 @@ import java.util.concurrent.TimeUnit
 
 private const val AuthorizationHeader = "Authorization"
 
-/** Creates Media3 data sources that can access only this Velin server's track streams. */
-class PlaybackDataSourceFactory(
-    credentials: DeviceCredentials,
-    httpClient: OkHttpClient = playbackHttpClient(),
+/** Creates Media3 data sources that can access only the currently paired Velin server's streams. */
+class PlaybackDataSourceFactory private constructor(
+    private val credentialsProvider: () -> DeviceCredentials?,
+    private val httpClient: OkHttpClient,
 ) : DataSource.Factory {
-    private val serverUrl = ServerAddress.normalize(credentials.serverUrl).toHttpUrl()
-    private val delegateFactory = OkHttpDataSource.Factory(httpClient)
-        .setDefaultRequestProperties(
-            mapOf(AuthorizationHeader to "Bearer ${credentials.token}"),
-        )
+    constructor(
+        credentials: DeviceCredentials,
+        httpClient: OkHttpClient = playbackHttpClient(),
+    ) : this(credentialsProvider = { credentials }, httpClient = httpClient)
 
-    override fun createDataSource(): DataSource = ServerBoundDataSource(
-        serverUrl = serverUrl,
-        delegate = delegateFactory.createDataSource(),
-    )
+    override fun createDataSource(): DataSource {
+        val credentials = credentialsProvider()
+            ?: throw IllegalStateException("Playback credentials are unavailable.")
+        val serverUrl = ServerAddress.normalize(credentials.serverUrl).toHttpUrl()
+        val delegate = OkHttpDataSource.Factory(httpClient)
+            .setDefaultRequestProperties(
+                mapOf(AuthorizationHeader to "Bearer ${credentials.token}"),
+            )
+            .createDataSource()
+        return ServerBoundDataSource(serverUrl = serverUrl, delegate = delegate)
+    }
 
     internal companion object {
+        fun reloading(
+            credentialStore: CredentialStore,
+            httpClient: OkHttpClient = playbackHttpClient(),
+        ): PlaybackDataSourceFactory = PlaybackDataSourceFactory(
+            credentialsProvider = credentialStore::load,
+            httpClient = httpClient,
+        )
+
         fun playbackHttpClient(): OkHttpClient = OkHttpClient.Builder()
             .followRedirects(false)
             .followSslRedirects(false)

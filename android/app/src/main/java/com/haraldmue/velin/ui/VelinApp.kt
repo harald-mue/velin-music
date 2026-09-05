@@ -1,6 +1,7 @@
 package com.haraldmue.velin.ui
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.BackHandler
@@ -69,6 +70,7 @@ import com.haraldmue.velin.playback.NetworkLossCanceller
 import com.haraldmue.velin.playback.isLikelyEmulator
 import com.haraldmue.velin.playback.NowPlayingScreen
 import com.haraldmue.velin.playback.PlaybackQueueScreen
+import com.haraldmue.velin.playback.PlaybackService
 import com.haraldmue.velin.playback.PlaybackViewModel
 import com.haraldmue.velin.playback.PlaybackViewModelFactory
 import com.haraldmue.velin.ui.library.AlbumDetailScreen
@@ -119,6 +121,9 @@ fun VelinApp() {
         PairingViewModelFactory(
             pairingGateway = PairingClient(),
             credentialStore = AndroidKeyStoreCredentialStore(applicationContext),
+            onCredentialsChanged = {
+                applicationContext.stopService(Intent(applicationContext, PlaybackService::class.java))
+            },
         )
     }
     val pairingViewModel: PairingViewModel = viewModel(factory = pairingFactory)
@@ -225,6 +230,7 @@ private fun ConnectedApp(
         libraryViewModel.closeArtist()
         libraryViewModel.closeTrack()
         playbackViewModel.stopAndClear()
+        playbackViewModel.releaseForCredentialChange()
         onDisconnect()
     }
 

@@ -86,7 +86,11 @@ fun MiniPlayer(
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
-                    val detail = state.error ?: state.artist.orEmpty()
+                    val detail = when {
+                        state.error != null -> state.error
+                        state.isBuffering -> "Buffering stream…"
+                        else -> state.artist.orEmpty()
+                    }
                     if (detail.isNotEmpty()) {
                         Text(
                             text = detail,

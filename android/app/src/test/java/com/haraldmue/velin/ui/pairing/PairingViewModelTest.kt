@@ -29,10 +29,16 @@ class PairingViewModelTest {
                 serverVersion = "test",
             )
             val store = FakeCredentialStore()
+            var credentialChangeCount = 0
+            var credentialsSeenByCallback: DeviceCredentials? = null
             val viewModel = PairingViewModel(
                 pairingGateway = PairingGateway { _, _ -> expected },
                 credentialStore = store,
                 ioDispatcher = dispatcher,
+                onCredentialsChanged = {
+                    credentialChangeCount++
+                    credentialsSeenByCallback = store.credentials
+                },
             )
 
             advanceUntilIdle()
@@ -43,7 +49,17 @@ class PairingViewModelTest {
             advanceUntilIdle()
 
             assertEquals(expected, store.credentials)
+            assertEquals(expected, credentialsSeenByCallback)
+            assertEquals(1, credentialChangeCount)
             assertEquals(PairingUiState.Paired(expected), viewModel.state.value)
+
+            viewModel.disconnect()
+            advanceUntilIdle()
+
+            assertNull(store.credentials)
+            assertNull(credentialsSeenByCallback)
+            assertEquals(2, credentialChangeCount)
+            assertEquals(PairingUiState.Unpaired, viewModel.state.value)
         } finally {
             Dispatchers.resetMain()
         }

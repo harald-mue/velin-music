@@ -92,6 +92,7 @@ class PlaybackViewModel(
     ).buildAsync()
     private var controller: MediaController? = null
     private var pendingQueue: PendingQueue? = null
+    private var controllerReleased = false
 
     private val listener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
@@ -102,7 +103,7 @@ class PlaybackViewModel(
             mutableState.value = mutableState.value.copy(
                 isPlaying = false,
                 isBuffering = false,
-                error = "Playback failed. Check the server connection and device access.",
+                error = playbackErrorMessage(error),
             )
         }
     }
@@ -118,6 +119,10 @@ class PlaybackViewModel(
             {
                 try {
                     val connectedController = controllerFuture.get()
+                    if (controllerReleased) {
+                        MediaController.releaseFuture(controllerFuture)
+                        return@addListener
+                    }
                     controller = connectedController
                     connectedController.addListener(listener)
                     updateState(connectedController)
@@ -361,6 +366,16 @@ class PlaybackViewModel(
         stopAndClear()
     }
 
+    fun releaseForCredentialChange() {
+        if (controllerReleased) return
+        controllerReleased = true
+        forgetOverlay()
+        controller?.removeListener(listener)
+        controller = null
+        pendingQueue = null
+        MediaController.releaseFuture(controllerFuture)
+    }
+
     fun saveQueue() {
         if (queueBusy) return
         val items = itemsForSave()
@@ -532,6 +547,7 @@ class PlaybackViewModel(
             canSaveQueue = canSaveSavedQueue(availableIds(), persistedIds),
             canLoadQueue = canLoadSavedQueue(),
             queueBusy = queueBusy,
+            error = mutableState.value.error,
         )
     }
 
@@ -556,11 +572,7 @@ class PlaybackViewModel(
         if (duration == null) position.coerceAtLeast(0) else position.coerceIn(0, duration)
 
     override fun onCleared() {
-        forgetOverlay()
-        controller?.removeListener(listener)
-        controller = null
-        pendingQueue = null
-        MediaController.releaseFuture(controllerFuture)
+        releaseForCredentialChange()
     }
 
     private fun forgetOverlay() {
@@ -721,6 +733,14 @@ internal fun isValidQueueMove(fromIndex: Int, toIndex: Int, queueSize: Int): Boo
     if (fromIndex !in 0 until queueSize) return false
     if (toIndex !in 0 until queueSize) return false
     return fromIndex != toIndex
+}
+
+internal fun playbackErrorMessage(error: PlaybackException): String =
+    playbackErrorMessage(error.errorCodeName)
+
+internal fun playbackErrorMessage(errorCodeName: String): String {
+    val code = errorCodeName.removePrefix("ERROR_CODE_")
+    return "Playback failed ($code). Check the server and proxy stream logs."
 }
 
 class PlaybackViewModelFactory(

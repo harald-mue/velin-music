@@ -128,6 +128,7 @@ Run `docker compose up --build` against a real music bind mount, add `/music` as
 
 ### 2026-09-05
 
+- Fixed playback after re-pairing to a different server origin: the old MediaController is released, the playback service is stopped on credential changes, and each new stream data source reloads current Keystore credentials. Added origin-versus-public byte-range diagnostics, visible buffering state, and persistent Media3 error codes without changing the proven server streaming path.
 - Documented the developer Docker workflow in `README.md`, including `make docker-save` → `dist/velin-server-local.tar.gz` for copying a linux/amd64 image to another PC.
 - Added a `scratch` server image, Compose bind-mounts for `/music` (read-only) and `/data`, and English operator documentation in `docs/DEPLOYMENT.md` (ADR-024). Startup now tightens an owned data directory to mode `0700`.
 - Album and artist detail screens can append their bounded track lists to the current queue as well as replace it with Play album / Play artist.

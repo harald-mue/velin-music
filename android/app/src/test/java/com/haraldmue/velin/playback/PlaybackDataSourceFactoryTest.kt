@@ -3,6 +3,7 @@ package com.haraldmue.velin.playback
 import android.net.Uri
 import androidx.media3.common.C
 import androidx.media3.datasource.DataSpec
+import com.haraldmue.velin.data.CredentialStore
 import com.haraldmue.velin.data.DeviceCredentials
 import com.haraldmue.velin.data.Track
 import okhttp3.mockwebserver.MockResponse
@@ -68,6 +69,36 @@ class PlaybackDataSourceFactoryTest {
     }
 
     @Test
+    fun reloadingFactoryUsesCredentialsSavedAfterTheServiceStarted() {
+        MockWebServer().use { oldServer ->
+            MockWebServer().use { newServer ->
+                val oldCredentials = credentials(oldServer.url("/").toString().trimEnd('/'))
+                val newCredentials = credentials(
+                    newServer.url("/velin").toString().trimEnd('/'),
+                    token = "new-token",
+                )
+                val store = MutableCredentialStore(oldCredentials)
+                val factory = PlaybackDataSourceFactory.reloading(store)
+
+                store.credentials = newCredentials
+                newServer.enqueue(MockResponse().setBody("new-audio"))
+                val item = PlaybackMediaItemFactory(newCredentials).create(testTrack())
+                val dataSource = factory.createDataSource()
+                try {
+                    dataSource.open(DataSpec.Builder().setUri(item.localConfiguration!!.uri).build())
+                } finally {
+                    dataSource.close()
+                }
+
+                val request = newServer.takeRequest()
+                assertEquals("/velin/api/v1/tracks/track-1/stream", request.path)
+                assertEquals("Bearer new-token", request.getHeader("Authorization"))
+                assertEquals(0, oldServer.requestCount)
+            }
+        }
+    }
+
+    @Test
     fun dataSourceDoesNotFollowRedirectsThatCouldLeakAuthorization() {
         MockWebServer().use { server ->
             MockWebServer().use { otherServer ->
@@ -103,13 +134,27 @@ class PlaybackDataSourceFactoryTest {
         }
     }
 
-    private fun credentials(serverUrl: String) = DeviceCredentials(
+    private fun credentials(serverUrl: String, token: String = "test-token") = DeviceCredentials(
         serverUrl = serverUrl,
         deviceId = "device-1",
-        token = "test-token",
+        token = token,
         serverName = "Velin",
         serverVersion = "test",
     )
+
+    private class MutableCredentialStore(
+        var credentials: DeviceCredentials?,
+    ) : CredentialStore {
+        override fun load(): DeviceCredentials? = credentials
+
+        override fun save(credentials: DeviceCredentials) {
+            this.credentials = credentials
+        }
+
+        override fun clear() {
+            credentials = null
+        }
+    }
 
     private fun testTrack() = Track(
         id = "track-1",

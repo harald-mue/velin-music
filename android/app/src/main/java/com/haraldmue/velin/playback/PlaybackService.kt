@@ -42,14 +42,15 @@ class PlaybackService : MediaLibraryService() {
         val playerBuilder = ExoPlayer.Builder(this)
             .setAudioAttributes(audioAttributes, true)
             .setLoadControl(createPlaybackLoadControl())
-        val credentials = AndroidKeyStoreCredentialStore(this).load()
+        val credentialStore = AndroidKeyStoreCredentialStore(this)
+        val credentials = credentialStore.load()
         var catalog: AutoLibraryCatalog? = null
         var resolver: AutoPlaybackResolver? = null
         if (credentials != null) {
             val streamClient = PlaybackDataSourceFactory.playbackHttpClient()
             playbackHttpClient = streamClient
             playerBuilder.setMediaSourceFactory(
-                DefaultMediaSourceFactory(PlaybackDataSourceFactory(credentials, streamClient)),
+                DefaultMediaSourceFactory(PlaybackDataSourceFactory.reloading(credentialStore, streamClient)),
             )
             artworkBitmapLoader = AuthenticatedArtworkBitmapLoader(credentials)
             val gateway = VelinApiClient(credentials)

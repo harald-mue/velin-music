@@ -6,7 +6,7 @@ Last updated: 2026-09-05
 
 The Go executable provides storage, indexing, authentication, administration, protected library APIs, artwork, and original-format streaming. The native Android project builds with Kotlin, Compose, and API 37 and provides a graphite visual system with Home/Queue/Library navigation, in-library search, and adaptive portrait/landscape layouts.
 
-Android first-page library browsing/search, cursor pagination, album/artist/track details, bounded visible-result/album queues, album/artist add-to-queue, queue reordering, a device-local saved-queue slot, and track-detail enqueue actions are wired through Media3, including authenticated artwork, Now Playing, seeking, automatic advance, previous/next, queue inspection/removal, shuffle, and repeat. Playback is owned by an exported `MediaLibraryService` that also exposes an Android Auto media library (Albums and Artists).
+Android exact summary counts, a bounded Home shelf, lazy library browsing/search, automatic cursor pagination, album/artist/track details, bounded visible-result/album queues, album/artist add-to-queue, queue reordering, a device-local saved-queue slot, and track-detail enqueue actions are wired through Media3, including authenticated artwork, Now Playing, seeking, automatic advance, previous/next, queue inspection/removal, shuffle, and repeat. Playback is owned by an exported `MediaLibraryService` that also exposes an Android Auto media library (Albums and Artists).
 
 ## Current milestone
 
@@ -18,7 +18,7 @@ Android first-page library browsing/search, cursor pagination, album/artist/trac
 - [x] Go module, development commands, environment configuration, and minimal server executable.
 - [x] Private data-directory creation with permission and symlink checks.
 - [x] Structured JSON lifecycle logging and graceful HTTP shutdown.
-- [x] Pure-Go SQLite setup with WAL, foreign keys, busy timeout, and a single deterministic connection.
+- [x] Pure-Go SQLite setup with WAL, foreign keys, busy timeout, and a bounded four-connection pool configured consistently through the driver DSN.
 - [x] Ordered embedded migrations through `005_admin_auth.sql`.
 - [x] `GET /api/v1/status` with automated tests.
 - [x] Canonical SQLite-backed library-root management.
@@ -37,7 +37,7 @@ Android first-page library browsing/search, cursor pagination, album/artist/trac
 - [x] Administrator bootstrap, Argon2id password storage, HttpOnly session cookies, CSRF-protected mutations, and login rate limiting.
 - [x] Admin device listing/revocation and pairing-code creation with QR payload generation.
 - [x] Bearer-protected artist, album, track, and search HTTP handlers with repository pagination bounds and stable JSON errors.
-- [x] Bearer-protected cover HTTP responses from the validated artwork cache with safe content types.
+- [x] Bearer-protected original artwork plus on-demand 128/256/512 px JPEG derivatives, immutable private caching, serialized generation, atomic installation, and a bounded private derivative cache.
 - [x] Bearer-protected original FLAC/MP3 streaming with HTTP byte ranges and opened-file identity revalidation.
 - [x] Server-rendered administration pages for bootstrap setup, login, device management, pairing-code creation, library-root management, and scan triggering.
 - [x] Admin JSON endpoints for library-root CRUD, background scan triggers, and recent scan history.
@@ -50,15 +50,15 @@ Android first-page library browsing/search, cursor pagination, album/artist/trac
 - [x] Kotlin/Compose Android project with Gradle Wrapper, API 37 build, polished graphite/ice-blue theme, accessible Material iconography, primary navigation shell, and unit tests.
 - [x] Android QR/manual pairing with CameraX/ZXing, strict payload parsing, bounded OkHttp response handling, HTTP(S) URL normalization, safe errors, and Android Keystore-backed AES-GCM credential storage.
 - [x] Server administration pairing defaults `server_url` to the editable browser-visible base (including a reverse-proxy path prefix) and renders an ephemeral QR image directly from the token-free `server_url`/`code` payload.
-- [x] Authenticated Android OkHttp client with bearer injection, bounded JSON decoding, revocation handling, and initial status/artist/album/track/search loading.
-- [x] Android Home summary, searchable track results, and first-page Library views with loading, empty, and recoverable-error states.
+- [x] Authenticated Android OkHttp client with bearer injection, bounded JSON decoding, revocation handling, exact summary/revision loading, and lazy section requests.
+- [x] Android Home with exact server counts and a 16-album shelf, lazy first-load Library sections, searchable track results, and cursor-paginated views with loading, empty, and recoverable-error states.
 - [x] Exported Android Media3 `MediaLibraryService` owning ExoPlayer and a `MediaLibrarySession`, with media audio focus, becoming-noisy handling, Android Auto media declaration, and foreground-service manifest declarations.
 - [x] Server-bound Media3 `OkHttpDataSource.Factory` with in-memory bearer authorization, exact paired-origin stream validation, disabled redirects, and token-free FLAC/MP3 `MediaItem` construction.
 - [x] Lifecycle-managed Media3 controller, playable Library/Search track rows, lazy notification permission, disconnect cleanup, and persistent buffering/play/pause mini-player.
 - [x] Android Now Playing screen with title/artist/album/format, elapsed/duration/buffer polling, bounded seeking, replay, and back navigation.
 - [x] Bounded Library/Search result queues with selected start index, automatic Media3 advance, queue-position state, and previous/next controls.
-- [x] Authenticated Coil artwork for album/track rows, mini-player, and Now Playing plus a bounded/downsampled Media3 bitmap loader for notifications and lock-screen metadata.
-- [x] Cursor-based load-more for library artists/albums/tracks and search results.
+- [x] Authenticated size-specific Coil artwork with explicit 15%-memory/64-MiB-disk caches for rows, mini-player, and Now Playing plus a bounded/downsampled Media3 bitmap loader for notifications and lock-screen metadata.
+- [x] Automatic near-end cursor pagination with inline loading and retry-only failures for library artists/albums/tracks and search results.
 - [x] Artist detail with play-all, add-to-queue, and bounded artist-track loading; track detail with metadata, play action, and album/artist navigation.
 - [x] Track-detail Play next and Add to queue actions, plus album/artist Add to queue, with bounded Media3 queue insertion.
 - [x] Media3-backed queue screen with current-item highlighting, direct selection, safe removal, long-press drag reorder (shuffle off), shuffle, repeat Off/All/One, Clear, and one device-local Save/Load slot.
@@ -74,8 +74,9 @@ Android first-page library browsing/search, cursor pagination, album/artist/trac
 - Internal indexing and browse functionality is reachable through admin HTTP/UI triggers and optional environment-driven startup and scheduled full-library scans; public status/pairing, admin JSON/HTML (including library roots and scan triggers), and bearer-protected library browse/search/artwork/streaming routes are wired.
 - A process crash could leave a scan marked `running` until the next server startup; startup maintenance now marks those scans failed, records an interrupted error, and clears temporary markers.
 - Artwork-cache files for removed cover rows are garbage-collected at startup.
-- Album identity currently uses exact title, album-artist ID, and year without a schema-level unique constraint; correctness relies on the single SQLite connection and globally serialized scanner, so database concurrency must not be widened without strengthening this invariant.
+- Album identity currently uses exact title, album-artist ID, and year without a schema-level unique constraint; correctness relies on the globally serialized scanner being the only album/track upsert writer. The bounded pool permits concurrent reads, not concurrent scans.
 - Scan progress reports files seen and indexed, not a percentage: obtaining an exact total first would require a second complete filesystem walk. Counters are checkpointed at most once per second or per 100 files and finalized exactly after discovery/reconciliation.
+- A physical 2,096-track remote library exposed manual pagination, cold repeated detail requests, and slow first-load full-size artwork. Phases 1–3 in `docs/PERFORMANCE.md` now provide automatic near-end pagination, bounded detail caches, parallel artist requests, size-specific artwork, exact summary counts, and lazy sections; physical-device remeasurement remains.
 - Broad one-character search prefixes can rank many FTS rows; performance still needs benchmarking against the 100,000-track target and future authenticated endpoints need rate limits.
 - MP3 duration is estimated from bitrate when Xing/VBRI frame counts are unavailable.
 - There is no released-database upgrade fixture or backup/downgrade policy yet.
@@ -122,12 +123,20 @@ Android:
 
 ## Recommended next task
 
-Run `docker compose up --build` against a real music bind mount, add `/music` as a library root, and confirm scans and admin UI. Then continue lock-screen, notification, Bluetooth/headset, background-playback, and Android Auto in-car validation.
+Install the new APK and server image, then remeasure cold/warm Home, lazy section loading, automatic pagination, album/artist reopening, first-cover latency, transferred artwork bytes, and memory against the physical 2,096-track library. Use those results to decide whether Phase 4 Room/Paging persistence is justified.
 
 ## Recent work log
 
+### 2026-09-06
+
+- Diagnosed album pagination and artwork together on a physical device: rapid artwork replacement produced enough HTTP/2 stream resets and retry amplification to push an album page into its 15-second timeout. Artwork is now isolated on at most two HTTP/1.1 connections with no application retry, viewport cancellations remain cheap, and client disposal no longer closes TLS sockets on the main thread. A 12-swipe device run loaded two album pages in 952 ms and 4.0 s without another pagination error. Uncached server derivatives now use faster approximate bilinear scaling.
+- Added credential-free debug request timings and identified server-side SQLite connection starvation: status completed in about one second while summary and album requests timed out after 15 seconds. The server now uses a bounded four-connection WAL pool with safety PRAGMAs applied per connection.
+- Implemented performance Phase 3: authenticated exact library summary counts, an opaque trigger-maintained revision, a bounded Home album shelf, lazy per-section Android loading, and revision-based section/detail-cache invalidation.
+
 ### 2026-09-05
 
+- Implemented performance Phases 1 and 2: 200-item artist/album and 100-item track pages, automatic near-end cursor loading with retry-only errors, atomic stale-safe merges, bounded detail caches, concurrent artist requests, fixed-size authenticated artwork derivatives, immutable caching, and explicit Coil cache limits.
+- Profiled a physical phone against a 2,096-track remote library and added `docs/PERFORMANCE.md`: phased measurement, automatic pagination, bounded detail caching, artwork derivatives, exact summary counts, and an optional later Room/Paging cache.
 - Fixed playback after re-pairing to a different server origin: the old MediaController is released, the playback service is stopped on credential changes, and each new stream data source reloads current Keystore credentials. Added origin-versus-public byte-range diagnostics, visible buffering state, and persistent Media3 error codes without changing the proven server streaming path.
 - Documented the developer Docker workflow in `README.md`, including `make docker-save` → `dist/velin-server-local.tar.gz` for copying a linux/amd64 image to another PC.
 - Added a `scratch` server image, Compose bind-mounts for `/music` (read-only) and `/data`, and English operator documentation in `docs/DEPLOYMENT.md` (ADR-024). Startup now tightens an owned data directory to mode `0700`.

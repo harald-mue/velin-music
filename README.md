@@ -323,7 +323,7 @@ AGENT.md             Persistent engineering instructions
 server/              Go server
 android/             Native Kotlin/Jetpack Compose client
 server/internal/admin/ Embedded administration templates and assets
-docs/                Architecture, API, security, design, and handoff documents
+docs/                Architecture, API, security, performance, deployment, and handoff documents
 Makefile             Development commands
 Dockerfile           Multi-stage scratch image for the server
 docker-compose.yml   Bind-mounted music and data volumes

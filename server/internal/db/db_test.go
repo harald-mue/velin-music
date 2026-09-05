@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestOpenAppliesInitialSchema(t *testing.T) {
@@ -73,6 +74,35 @@ func TestOpenRejectsSymlinkDatabase(t *testing.T) {
 	}
 	if _, err := Open(context.Background(), link); err == nil {
 		t.Fatal("Open(symlink) error = nil, want error")
+	}
+}
+
+func TestOpenAllowsReadsDuringAWriteTransaction(t *testing.T) {
+	database, err := Open(context.Background(), filepath.Join(t.TempDir(), "velin.db"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer database.Close()
+
+	tx, err := database.Begin()
+	if err != nil {
+		t.Fatalf("Begin() error = %v", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`
+		INSERT INTO library_roots (id, path, created_at, updated_at)
+		VALUES ('root-1', '/music', 'now', 'now')`); err != nil {
+		t.Fatalf("insert in transaction: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	var revision int
+	if err := database.QueryRowContext(
+		ctx,
+		"SELECT revision FROM library_state WHERE singleton = 1",
+	).Scan(&revision); err != nil {
+		t.Fatalf("concurrent read error = %v", err)
 	}
 }
 

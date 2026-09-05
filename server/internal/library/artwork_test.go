@@ -134,6 +134,18 @@ func TestArtworkCacheRejectsSymlinkDirectories(t *testing.T) {
 	if _, err := NewArtworkCache(dataDir); err == nil {
 		t.Fatal("NewArtworkCache(covers symlink) error = nil")
 	}
+
+	variantDataDir := t.TempDir()
+	coverDir := filepath.Join(variantDataDir, "covers")
+	if err := os.Mkdir(coverDir, 0o700); err != nil {
+		t.Fatalf("create cover directory: %v", err)
+	}
+	if err := os.Symlink(target, filepath.Join(coverDir, "variants")); err != nil {
+		t.Skipf("variant symlinks unavailable: %v", err)
+	}
+	if _, err := NewArtworkCache(variantDataDir); err == nil {
+		t.Fatal("NewArtworkCache(variants symlink) error = nil")
+	}
 }
 
 func TestArtworkCacheDetectsCorruptedExistingEntry(t *testing.T) {

@@ -4,7 +4,7 @@ Go module: `github.com/harald-mue/velin-music/server`
 
 The server is a Go application built around the standard-library HTTP stack and a pure-Go SQLite driver. The executable initializes private managed storage and the database, logs lifecycle events as JSON, serves public status/pairing endpoints, admin JSON and HTML routes (including ephemeral pairing QR images, library-root management, and scan triggers), bearer-protected library browse/search/artwork/streaming endpoints, and shuts down cleanly on SIGINT/SIGTERM.
 
-The `internal/library` package implements validated root persistence, bounded FLAC/MP3 discovery and metadata parsing, artwork caching with startup garbage collection, transactional scan reconciliation, interrupted-scan recovery, globally serialized sequential multi-root orchestration with throttled live counters, optional startup scanning, periodic full-library scheduling, paginated artist/album/track queries, and ranked FTS5 track search.
+The `internal/library` package implements validated root persistence, bounded FLAC/MP3 discovery and metadata parsing, artwork caching with bounded 128/256/512 px derivatives and startup garbage collection, transactional scan reconciliation, interrupted-scan recovery, globally serialized sequential multi-root orchestration with throttled live counters, optional startup scanning, periodic full-library scheduling, paginated artist/album/track queries, and ranked FTS5 track search.
 
 ## Run
 
@@ -48,6 +48,7 @@ The administration frontend preserves an external path prefix in relative naviga
 ```text
 GET  /api/v1/status
 POST /api/v1/pair
+GET  /api/v1/library/summary
 GET  /api/v1/artists
 GET  /api/v1/artists/{id}
 GET  /api/v1/albums
@@ -55,12 +56,13 @@ GET  /api/v1/albums/{id}
 GET  /api/v1/tracks
 GET  /api/v1/tracks/{id}
 GET  /api/v1/search
-GET  /api/v1/covers/{id}
+GET|HEAD /api/v1/covers/{id}
+GET|HEAD /api/v1/covers/{id}/{128|256|512}
 GET  /api/v1/tracks/{id}/stream
 HEAD /api/v1/tracks/{id}/stream
 ```
 
-Bearer-protected library routes require `Authorization: Bearer <token>`.
+Bearer-protected library routes require `Authorization: Bearer <token>`. The summary endpoint returns exact public entity counts plus an opaque trigger-maintained revision for client cache invalidation.
 
 Administration UI:
 

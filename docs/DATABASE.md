@@ -16,8 +16,9 @@ Velin uses SQLite with FTS5 and explicit schema migrations. The database is an i
 - `scan_runs`: lifecycle, throttled live counters, finalized counts, start/end timestamps, and status.
 - `scan_errors`: scan run, root, source identity, safe error code/message, and timestamp.
 - `scan_seen_tracks`: temporary per-scan root-relative paths used to make complete-scan deletion safe without retaining all paths in memory.
+- `library_state`: one non-negative revision counter maintained by track mutation triggers and exposed only through an opaque hash.
 
-The baseline tables and FTS5 table are created by `server/migrations/001_initial_schema.sql`; scan reconciliation state is added by `002_scan_seen_tracks.sql`; browse ordering and relationship indexes are added by `003_query_indexes.sql`; the single-running-scan invariant is enforced by `004_running_scan_guard.sql`; administrator credentials and sessions are added by `005_admin_auth.sql`. Future schema changes must use new immutable migrations. Internal browse and FTS search repositories provide bounded keyset pagination; protected library HTTP handlers remain planned.
+The baseline tables and FTS5 table are created by `server/migrations/001_initial_schema.sql`; scan reconciliation state is added by `002_scan_seen_tracks.sql`; browse ordering and relationship indexes are added by `003_query_indexes.sql`; the single-running-scan invariant is enforced by `004_running_scan_guard.sql`; administrator credentials and sessions are added by `005_admin_auth.sql`; `006_library_revision.sql` adds the trigger-maintained revision source. Future schema changes must use new immutable migrations. Internal browse and FTS search repositories provide bounded keyset pagination through bearer-protected library HTTP handlers.
 
 The Android client’s one saved playback queue is a private on-device JSON file, not a SQLite table and not a server playlist.
 

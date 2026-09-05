@@ -1,10 +1,8 @@
 package com.haraldmue.velin.data
 
 import kotlinx.coroutines.test.runTest
-import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
-import okhttp3.mockwebserver.RecordedRequest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.fail
@@ -65,32 +63,24 @@ class VelinApiClientTest {
     }
 
     @Test
-    fun loadsAuthenticatedLibrarySnapshot() = runTest {
+    fun loadsAuthenticatedLibrarySummary() = runTest {
         MockWebServer().use { server ->
-            server.dispatcher = object : Dispatcher() {
-                override fun dispatch(request: RecordedRequest): MockResponse = when {
-                    request.path.orEmpty().startsWith("/api/v1/artists") -> MockResponse().setBody(
-                        """{"items":[{"id":"artist-1","name":"Artist","album_count":1,"track_count":1}],"has_more":false}""",
-                    )
-                    request.path.orEmpty().startsWith("/api/v1/albums") -> MockResponse().setBody(
-                        """{"items":[{"id":"album-1","title":"Album","artist_name":"Artist","year":2026,"track_count":1}],"has_more":false}""",
-                    )
-                    request.path.orEmpty().startsWith("/api/v1/tracks") -> MockResponse().setBody(
-                        """{"items":[{"id":"track-1","title":"Track","format":"mp3","artist_name":"Artist","album_title":"Album"}],"has_more":false}""",
-                    )
-                    else -> MockResponse().setResponseCode(404)
-                }
-            }
+            server.enqueue(
+                MockResponse().setBody(
+                    """{"artist_count":12,"album_count":34,"track_count":2096,"revision":"revision-1"}""",
+                ),
+            )
             val client = VelinApiClient(credentials(server))
 
-            val library = client.loadLibrary()
+            val summary = client.summary()
 
-            assertEquals("Artist", library.artists.items.single().name)
-            assertEquals("Album", library.albums.items.single().title)
-            assertEquals("Track", library.tracks.items.single().title)
-            repeat(3) {
-                assertEquals("Bearer test-token", server.takeRequest().getHeader("Authorization"))
-            }
+            assertEquals(12, summary.artistCount)
+            assertEquals(34, summary.albumCount)
+            assertEquals(2096, summary.trackCount)
+            assertEquals("revision-1", summary.revision)
+            val request = server.takeRequest()
+            assertEquals("/api/v1/library/summary", request.path)
+            assertEquals("Bearer test-token", request.getHeader("Authorization"))
         }
     }
 

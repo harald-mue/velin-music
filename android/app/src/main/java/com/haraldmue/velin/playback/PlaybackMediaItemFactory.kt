@@ -28,7 +28,7 @@ class PlaybackMediaItemFactory(
             .setArtist(track.artistName)
             .setAlbumTitle(track.albumTitle)
         track.coverId?.let { coverId ->
-            metadataBuilder.setArtworkUri(Uri.parse(artworkPolicy.urlFor(coverId)))
+            metadataBuilder.setArtworkUri(Uri.parse(artworkPolicy.urlFor(coverId, size = 512)))
         }
         val metadata = metadataBuilder.build()
         val builder = MediaItem.Builder()

@@ -465,6 +465,7 @@ private fun ConnectedApp(
                         onTrackClick = ::playQueue,
                         onTrackDetail = libraryViewModel::openTrack,
                         onSearch = libraryViewModel::search,
+                        onLoadSection = libraryViewModel::ensureSectionLoaded,
                         onLoadMore = libraryViewModel::loadMore,
                         onLoadMoreSearch = libraryViewModel::loadMoreSearch,
                         onRetry = libraryViewModel::refresh,

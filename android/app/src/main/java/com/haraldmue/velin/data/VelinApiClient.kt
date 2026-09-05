@@ -2,8 +2,6 @@ package com.haraldmue.velin.data
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -25,17 +23,20 @@ private const val MaxApiResponseBytes = 1L * 1_024L * 1_024L
 private const val MaxPageItems = 200
 private const val MaxModelStringLength = 4_096
 private const val MaxAlbumQueueItems = 500
+private const val InitialArtistPageItems = 200
+private const val InitialAlbumPageItems = 200
+private const val InitialTrackPageItems = 100
 
 interface LibraryGateway {
     suspend fun status(): ServerStatus
-    suspend fun loadLibrary(): LibrarySnapshot
-    suspend fun loadArtistsPage(cursor: String? = null, limit: Int = 50): Page<Artist>
-    suspend fun loadAlbumsPage(cursor: String? = null, limit: Int = 50): Page<Album>
+    suspend fun summary(): LibrarySummary
+    suspend fun loadArtistsPage(cursor: String? = null, limit: Int = InitialArtistPageItems): Page<Artist>
+    suspend fun loadAlbumsPage(cursor: String? = null, limit: Int = InitialAlbumPageItems): Page<Album>
     suspend fun loadTracksPage(
         cursor: String? = null,
         artistId: String? = null,
         albumId: String? = null,
-        limit: Int = 50,
+        limit: Int = InitialTrackPageItems,
     ): Page<Track>
     suspend fun loadArtist(artistId: String): Artist
     suspend fun loadAlbum(albumId: String): Album
@@ -58,6 +59,7 @@ class VelinApiClient(
                 .build()
             chain.proceed(request)
         }
+        .addNetworkInterceptor(SafeNetworkTimingInterceptor("library"))
         .build()
 
     fun cancelInFlight() {
@@ -76,15 +78,16 @@ class VelinApiClient(
         }
     }
 
-    override suspend fun loadLibrary(): LibrarySnapshot = coroutineScope {
-        val artists = async { loadArtistsPage() }
-        val albums = async { loadAlbumsPage() }
-        val tracks = async { loadTracksPage() }
-        LibrarySnapshot(
-            artists = AccumulatedPage.from(artists.await()),
-            albums = AccumulatedPage.from(albums.await()),
-            tracks = AccumulatedPage.from(tracks.await()),
-        )
+    override suspend fun summary(): LibrarySummary {
+        val json = getJSON("api/v1/library/summary")
+        return decodeResponse {
+            LibrarySummary(
+                artistCount = json.nonNegativeInt("artist_count"),
+                albumCount = json.nonNegativeInt("album_count"),
+                trackCount = json.nonNegativeInt("track_count"),
+                revision = json.requiredString("revision"),
+            )
+        }
     }
 
     override suspend fun loadArtistsPage(cursor: String?, limit: Int): Page<Artist> =

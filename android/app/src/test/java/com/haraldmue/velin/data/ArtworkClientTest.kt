@@ -16,11 +16,12 @@ class ArtworkClientTest {
         val policy = ArtworkRequestPolicy("https://velin.example/music")
 
         assertEquals(
-            "https://velin.example/music/api/v1/covers/cover-1",
+            "https://velin.example/music/api/v1/covers/cover-1/256",
             policy.urlFor("cover-1"),
         )
         assertThrows(IllegalArgumentException::class.java) { policy.urlFor("") }
         assertThrows(IllegalArgumentException::class.java) { policy.urlFor("x".repeat(129)) }
+        assertThrows(IllegalArgumentException::class.java) { policy.urlFor("cover-1", 1024) }
     }
 
     @Test
@@ -35,11 +36,30 @@ class ArtworkClientTest {
             }
 
             val request = server.takeRequest()
-            assertEquals("/music/api/v1/covers/cover-1", request.path)
+            assertEquals("/music/api/v1/covers/cover-1/256", request.path)
             assertEquals("Bearer test-token", request.getHeader("Authorization"))
             assertThrows(IOException::class.java) {
                 client.newCall(Request.Builder().url(server.url("/music/api/v1/status")).build()).execute()
             }
+        }
+    }
+
+    @Test
+    fun missingDerivativeFallsBackToAuthenticatedOriginalForStagedUpgrades() {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setResponseCode(404))
+            server.enqueue(MockResponse().setBody("original-image"))
+            val policy = ArtworkRequestPolicy(server.url("/music").toString().trimEnd('/'))
+            val client = client(policy)
+
+            client.newCall(Request.Builder().url(policy.urlFor("cover-1")).build()).execute().use {
+                assertEquals(200, it.code)
+            }
+
+            assertEquals("/music/api/v1/covers/cover-1/256", server.takeRequest().path)
+            val fallback = server.takeRequest()
+            assertEquals("/music/api/v1/covers/cover-1", fallback.path)
+            assertEquals("Bearer test-token", fallback.getHeader("Authorization"))
         }
     }
 

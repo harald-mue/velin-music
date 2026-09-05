@@ -85,6 +85,7 @@ Login and pairing endpoints are rate-limited per client. Set `VELIN_SECURE_COOKI
 All endpoints below require a valid, non-revoked device token unless noted otherwise.
 
 ```text
+GET /api/v1/library/summary
 GET /api/v1/artists
 GET /api/v1/artists/{id}
 GET /api/v1/albums
@@ -93,6 +94,19 @@ GET /api/v1/tracks?artist_id=<id>&album_id=<id>
 GET /api/v1/tracks/{id}
 GET /api/v1/search?q=<query>
 ```
+
+`GET /api/v1/library/summary` returns exact counts and an opaque revision from one SQLite read snapshot:
+
+```json
+{
+  "artist_count": 123,
+  "album_count": 187,
+  "track_count": 2096,
+  "revision": "opaque-revision"
+}
+```
+
+The revision changes whenever an indexed track row is inserted, updated, or deleted. Clients must compare it only for equality and must not infer scan or database state from its value.
 
 Artist, album, track, and FTS search repositories provide bounded keyset pagination and deterministic ordering. Track browse cursors are bound to their artist/album filter scope; search cursors are bound to the normalized query. Reusing either cursor with different inputs is rejected. The HTTP handlers below require a valid device bearer token.
 
@@ -115,12 +129,13 @@ Detail responses expose metadata and opaque related IDs, not indexed roots or so
 ## Artwork and streaming
 
 ```text
-GET /api/v1/covers/{id}
+GET|HEAD /api/v1/covers/{id}
+GET|HEAD /api/v1/covers/{id}/{size}
 GET /api/v1/tracks/{id}/stream
 HEAD /api/v1/tracks/{id}/stream
 ```
 
-Cover responses are served from the artwork cache with a validated `Content-Type` (`image/jpeg`, `image/png`, `image/gif`, or `image/webp`). `GET /api/v1/covers/{id}` requires a device bearer token, uses `http.ServeContent` for efficient delivery, and never exposes cache paths.
+Cover responses are served from the artwork cache with a validated `Content-Type` (`image/jpeg`, `image/png`, `image/gif`, or `image/webp`). The original route preserves the indexed bytes. The derivative route accepts only `128`, `256`, or `512`, preserves aspect ratio, and returns an on-demand JPEG bounded to that maximum dimension. Generation is serialized, installed atomically into a private cache, and the derivative cache is capped at 4,096 files and 512 MiB. Cover IDs are content hashes, so original and derivative responses use `private, max-age=31536000, immutable`. All cover routes require a device bearer token, use `http.ServeContent`, and never expose cache paths.
 
 Stream responses serve the original FLAC or MP3 file with `audio/flac` or `audio/mpeg`, `Content-Length`, validators, `Last-Modified`, and HTTP byte-range behavior via `http.ServeContent`. `GET` and `HEAD /api/v1/tracks/{id}/stream` require a device bearer token.
 

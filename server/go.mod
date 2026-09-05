@@ -7,6 +7,7 @@ require (
 	github.com/mewkiz/flac v1.0.14
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	golang.org/x/crypto v0.56.0
+	golang.org/x/image v0.45.0
 	modernc.org/sqlite v1.39.0
 )
 

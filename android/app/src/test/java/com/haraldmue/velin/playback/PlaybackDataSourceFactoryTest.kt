@@ -34,7 +34,7 @@ class PlaybackDataSourceFactoryTest {
         assertEquals("Track", item.mediaMetadata.title.toString())
         assertEquals("Artist", item.mediaMetadata.artist.toString())
         assertEquals(
-            "https://velin.example/music/api/v1/covers/cover-1",
+            "https://velin.example/music/api/v1/covers/cover-1/512",
             item.mediaMetadata.artworkUri.toString(),
         )
         assertFalse(item.mediaMetadata.artworkUri.toString().contains(credentials.token))

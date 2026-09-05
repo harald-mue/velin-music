@@ -67,7 +67,7 @@ Authentication precedes protected library, artwork, and streaming endpoints so n
 
 ## M9 — Android library UX — **active**
 
-- **Partial:** home, artists, albums, tracks, and search load their first authenticated pages with cursor-based load-more; album, artist, and track detail screens are complete
+- **Partial:** Home loads exact counts and a bounded album shelf; artist, album, and track tabs load lazily with automatic cursor pagination; search and detail screens are complete
 - **Complete:** authenticated artwork in album/track rows, mini-player, Now Playing, and MediaSession metadata
 - **Complete:** loading, empty, and recoverable-error states for initial pages
 
@@ -88,7 +88,8 @@ Authentication precedes protected library, artwork, and streaming endpoints so n
 
 ## M11 — Polish and operations — **planned**
 
-- performance, accessibility, and purposeful animation
+- **Active:** Android large-library performance work following [`PERFORMANCE.md`](PERFORMANCE.md): automatic cursor prefetch, bounded detail caches, artwork derivatives, exact summary counts, revision invalidation, and lazy section loading are implemented; physical remeasurement and 2,000/100,000-track fixtures remain
+- accessibility and purposeful animation
 - robustness and integration testing
 - **Partial:** scratch Docker image, Compose bind-mounts for music and data, and operator documentation in [`DEPLOYMENT.md`](DEPLOYMENT.md); reverse-proxy path prefixes are documented; published registry images and backup automation remain open
 - GitHub Actions CI for server and Android validation

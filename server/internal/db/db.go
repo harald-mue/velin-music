@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 
@@ -39,14 +40,26 @@ func Open(ctx context.Context, path string) (*sql.DB, error) {
 		return nil, fmt.Errorf("inspect database file: %w", err)
 	}
 
-	database, err := sql.Open("sqlite", path)
+	dsn := (&url.URL{
+		Scheme: "file",
+		Path:   path,
+		RawQuery: url.Values{
+			"_pragma": {
+				"foreign_keys(1)",
+				"journal_mode(WAL)",
+				"busy_timeout(5000)",
+			},
+		}.Encode(),
+	}).String()
+	database, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open SQLite database: %w", err)
 	}
-	// A single connection keeps connection-local PRAGMAs deterministic and still
-	// lets SQLite coordinate reads and writes safely for this self-hosted service.
-	database.SetMaxOpenConns(1)
-	database.SetMaxIdleConns(1)
+	// WAL allows bounded concurrent readers while scans perform short writes.
+	// Connection-local PRAGMAs are part of the DSN so every pooled connection
+	// receives identical safety and lock-wait settings.
+	database.SetMaxOpenConns(4)
+	database.SetMaxIdleConns(4)
 
 	closeOnError := func(err error) (*sql.DB, error) {
 		_ = database.Close()
@@ -56,16 +69,6 @@ func Open(ctx context.Context, path string) (*sql.DB, error) {
 	if err := database.PingContext(ctx); err != nil {
 		return closeOnError(fmt.Errorf("ping SQLite database: %w", err))
 	}
-	for _, pragma := range []string{
-		"PRAGMA foreign_keys = ON",
-		"PRAGMA journal_mode = WAL",
-		"PRAGMA busy_timeout = 5000",
-	} {
-		if _, err := database.ExecContext(ctx, pragma); err != nil {
-			return closeOnError(fmt.Errorf("configure SQLite (%s): %w", pragma, err))
-		}
-	}
-
 	if err := migrate.Apply(ctx, database, migrations.All()); err != nil {
 		return closeOnError(err)
 	}

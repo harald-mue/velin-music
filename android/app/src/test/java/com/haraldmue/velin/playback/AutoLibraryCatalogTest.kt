@@ -6,7 +6,7 @@ import com.haraldmue.velin.data.Artist
 import com.haraldmue.velin.data.ArtworkRequestPolicy
 import com.haraldmue.velin.data.DeviceCredentials
 import com.haraldmue.velin.data.LibraryGateway
-import com.haraldmue.velin.data.LibrarySnapshot
+import com.haraldmue.velin.data.LibrarySummary
 import com.haraldmue.velin.data.Page
 import com.haraldmue.velin.data.ServerStatus
 import com.haraldmue.velin.data.Track
@@ -80,7 +80,7 @@ class AutoLibraryCatalogTest {
         assertEquals(true, albums.single().mediaMetadata.isBrowsable)
         assertEquals(true, albums.single().mediaMetadata.isPlayable)
         assertEquals(
-            "https://velin.example/api/v1/covers/cover-1",
+            "https://velin.example/api/v1/covers/cover-1/256",
             albums.single().mediaMetadata.artworkUri.toString(),
         )
         assertEquals(listOf(artistMediaId("artist-1")), artists.map { it.mediaId })
@@ -277,7 +277,7 @@ private class FakeLibraryGateway(
 
     override suspend fun status(): ServerStatus = ServerStatus("Velin", "ok", "test")
 
-    override suspend fun loadLibrary(): LibrarySnapshot = error("unused")
+    override suspend fun summary(): LibrarySummary = error("unused")
 
     override suspend fun loadArtistsPage(cursor: String?, limit: Int): Page<Artist> {
         checkAvailable()

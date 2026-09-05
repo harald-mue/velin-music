@@ -158,7 +158,7 @@ Component-specific commands and status reporting must clearly distinguish unavai
 
 ## ADR-008 — Pure-Go SQLite driver for the initial server
 
-Status: Accepted
+Status: Accepted; connection limit superseded by ADR-027
 
 Date: 2026-09-03
 
@@ -176,7 +176,7 @@ The pure-Go driver preserves the single-executable deployment goal and avoids CG
 
 ### Consequences
 
-The server takes a dependency on the SQLite driver and its transitive modules. Dependency updates require review. Database throughput and long-running scan behavior must be measured before changing connection limits.
+The server takes a dependency on the SQLite driver and its transitive modules. Dependency updates require review. ADR-027 records the measured reason and safeguards for increasing the connection limit.
 
 ## ADR-009 — Callback-based discovery with strict root boundaries
 
@@ -513,3 +513,57 @@ Ship a multi-stage Dockerfile that builds with `CGO_ENABLED=0` and copies only `
 ### Consequences
 
 There is no shell, package manager, or image `HEALTHCHECK`. UID/GID must be set so the process can write `/data` and read `/music`. Additional libraries are extra read-only mounts plus extra admin roots. Image publishing to a registry remains out of this change.
+
+## ADR-025 — Automatic cursor pagination and bounded artwork derivatives
+
+Status: Accepted
+
+Date: 2026-09-05
+
+### Context
+
+A 2,096-track remote library exposed manual page controls, repeated cold detail requests, and full-size embedded artwork transfers for small Android surfaces. Loading the complete catalog eagerly would merely move the problem into startup time and memory and would not scale to the 100,000-track target.
+
+### Decision
+
+Keep the bounded keyset API and have Android request 200-item artist/album pages and 100-item track pages, automatically requesting the next cursor near the visible end. Merge page completions atomically and reject stale cursors after refresh. Cache only bounded album, artist, and track details in memory and load independent artist requests concurrently. Add authenticated `128`, `256`, and `512` cover variants generated on demand from validated originals. Serialize decoding, atomically install JPEG output, cap the derivative cache at 4,096 files and 512 MiB, and use content-hash-based immutable private caching. Android requests size-specific token-free URLs and bounds Coil to 15% memory and 64 MiB disk.
+
+### Consequences
+
+Users no longer press **Load more**, while every HTTP response remains capped at 200 items. Reopening recently viewed details avoids another round trip; a changed library revision clears the cache, which never stores credentials or paths. The first request for a derivative performs bounded server-side decoding; simultaneous generation is serialized and subsequent requests use the private cache. Android falls back to the authenticated original route after a derivative `404`, allowing staged server/client deployment. Exact Home counts and lazy section loading are defined by ADR-026. Persistent Paging remains a later measured decision.
+
+## ADR-026 — Trigger-maintained library revision and lazy Android sections
+
+Status: Accepted
+
+Date: 2026-09-06
+
+### Context
+
+Home needed exact totals without loading the first page of every entity type, and Android needed a reliable way to discard metadata caches after scans or root removal. A completed-scan timestamp is insufficient because successful track upserts can become visible before final reconciliation and failed scans can retain safe partial additions.
+
+### Decision
+
+Maintain one non-negative SQLite revision counter through `AFTER INSERT`, `AFTER UPDATE`, and `AFTER DELETE` triggers on indexed tracks. Return an opaque hash of that counter with exact artist, album, and track counts from one read snapshot at `GET /api/v1/library/summary`. Android startup requests only status, summary, and a bounded 16-album Home shelf. Full album, artist, and track pages load independently on first navigation. When the revision changes, clear bounded detail/search caches and reload only sections previously requested during the process lifetime.
+
+### Consequences
+
+The revision can advance during a running scan and after root deletion; clients compare it only for equality. Existing databases begin at revision zero when migration 006 is applied, which is safe because no earlier client has persisted that revision contract. Home counts no longer depend on page size, and initial startup no longer requests artist or track pages. This is cache invalidation, not an offline synchronization or delta protocol.
+
+## ADR-027 — Bounded concurrent SQLite reads during scans
+
+Status: Accepted
+
+Date: 2026-09-06
+
+### Context
+
+Device timing showed status completing in about one second while authenticated summary and album-page requests timed out after 15 seconds during library activity. WAL could not help because `database/sql` was limited to one connection, so API reads waited behind scan writes and other database work.
+
+### Decision
+
+Allow at most four SQLite connections and retain four idle connections. Configure `foreign_keys(1)`, `journal_mode(WAL)`, and `busy_timeout(5000)` in the modernc SQLite DSN so every pooled or replacement connection receives the same settings. Keep scan execution globally serialized and its write transactions short. Add a regression test proving that a read completes while another connection holds an uncommitted write transaction.
+
+### Consequences
+
+API reads can use WAL snapshots while a scan writes, removing single-connection starvation without allowing multiple scanners. Album creation remains safe because only the globally serialized scanner performs track/album upserts. All future connection-local PRAGMAs must be configured through the DSN rather than once on an arbitrary pooled connection.

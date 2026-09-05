@@ -6,6 +6,13 @@ data class ServerStatus(
     val version: String,
 )
 
+data class LibrarySummary(
+    val artistCount: Int,
+    val albumCount: Int,
+    val trackCount: Int,
+    val revision: String,
+)
+
 data class Artist(
     val id: String,
     val name: String,
@@ -83,12 +90,14 @@ data class AccumulatedPage<T>(
     val nextCursor: String? = null,
     val hasMore: Boolean = false,
     val loadingMore: Boolean = false,
+    val loadMoreError: String? = null,
 ) {
     fun append(page: Page<T>): AccumulatedPage<T> = copy(
         items = items + page.items,
         nextCursor = page.nextCursor,
         hasMore = page.hasMore,
         loadingMore = false,
+        loadMoreError = null,
     )
 
     companion object {
@@ -101,7 +110,7 @@ data class AccumulatedPage<T>(
 }
 
 data class LibrarySnapshot(
-    val artists: AccumulatedPage<Artist>,
-    val albums: AccumulatedPage<Album>,
-    val tracks: AccumulatedPage<Track>,
+    val artists: AccumulatedPage<Artist> = AccumulatedPage(),
+    val albums: AccumulatedPage<Album> = AccumulatedPage(),
+    val tracks: AccumulatedPage<Track> = AccumulatedPage(),
 )

@@ -8,7 +8,7 @@ import (
 	"github.com/harald-mue/velin-music/server/internal/db/migrate"
 )
 
-//go:embed 001_initial_schema.sql 002_scan_seen_tracks.sql 003_query_indexes.sql 004_running_scan_guard.sql 005_admin_auth.sql
+//go:embed 001_initial_schema.sql 002_scan_seen_tracks.sql 003_query_indexes.sql 004_running_scan_guard.sql 005_admin_auth.sql 006_library_revision.sql
 var files embed.FS
 
 // All returns the migrations supported by this server version.
@@ -38,6 +38,11 @@ func All() []migrate.Migration {
 			Version: 5,
 			Name:    "admin_auth",
 			SQL:     mustRead("005_admin_auth.sql"),
+		},
+		{
+			Version: 6,
+			Name:    "library_revision",
+			SQL:     mustRead("006_library_revision.sql"),
 		},
 	}
 }

@@ -19,6 +19,7 @@ type libraryServices struct {
 
 func registerLibraryRoutes(mux *http.ServeMux, services libraryServices) {
 	deviceAuth := auth.RequireDeviceToken(services.tokens)
+	mux.Handle("GET /api/v1/library/summary", deviceAuth(http.HandlerFunc(services.librarySummaryHandler())))
 	mux.Handle("GET /api/v1/artists", deviceAuth(http.HandlerFunc(services.listArtistsHandler())))
 	mux.Handle("GET /api/v1/artists/{id}", deviceAuth(http.HandlerFunc(services.getArtistHandler())))
 	mux.Handle("GET /api/v1/albums", deviceAuth(http.HandlerFunc(services.listAlbumsHandler())))
@@ -29,6 +30,20 @@ func registerLibraryRoutes(mux *http.ServeMux, services libraryServices) {
 	mux.Handle("HEAD /api/v1/tracks/{id}/stream", deviceAuth(http.HandlerFunc(services.streamTrackHandler())))
 	mux.Handle("GET /api/v1/search", deviceAuth(http.HandlerFunc(services.searchTracksHandler())))
 	mux.Handle("GET /api/v1/covers/{id}", deviceAuth(http.HandlerFunc(services.getCoverHandler())))
+	mux.Handle("HEAD /api/v1/covers/{id}", deviceAuth(http.HandlerFunc(services.getCoverHandler())))
+	mux.Handle("GET /api/v1/covers/{id}/{size}", deviceAuth(http.HandlerFunc(services.getCoverVariantHandler())))
+	mux.Handle("HEAD /api/v1/covers/{id}/{size}", deviceAuth(http.HandlerFunc(services.getCoverVariantHandler())))
+}
+
+func (s libraryServices) librarySummaryHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		summary, err := s.queries.Summary(r.Context())
+		if err != nil {
+			writeRepositoryError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, summary)
+	}
 }
 
 func (s libraryServices) listArtistsHandler() http.HandlerFunc {
@@ -150,8 +165,31 @@ func (s libraryServices) getCoverHandler() http.HandlerFunc {
 		}
 		defer file.Close()
 		w.Header().Set("Content-Type", content.MIMEType)
-		w.Header().Set("Cache-Control", "private, max-age=3600")
+		w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
 		http.ServeContent(w, r, r.PathValue("id"), content.ModTime, file)
+	}
+}
+
+func (s libraryServices) getCoverVariantHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.covers == nil {
+			writeJSONError(w, http.StatusInternalServerError, "internal_error", "internal error")
+			return
+		}
+		size, err := strconv.Atoi(r.PathValue("size"))
+		if err != nil || !library.IsArtworkVariantSize(size) {
+			writeJSONError(w, http.StatusBadRequest, "invalid_request", "invalid request")
+			return
+		}
+		file, content, err := s.covers.OpenVariant(r.Context(), r.PathValue("id"), size)
+		if err != nil {
+			writeRepositoryError(w, err)
+			return
+		}
+		defer file.Close()
+		w.Header().Set("Content-Type", content.MIMEType)
+		w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+		http.ServeContent(w, r, r.PathValue("id")+"-"+r.PathValue("size"), content.ModTime, file)
 	}
 }
 

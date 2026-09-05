@@ -40,7 +40,9 @@ type Cover struct {
 
 // ArtworkCache stores content-addressed artwork below a managed data directory.
 type ArtworkCache struct {
-	directory string
+	directory         string
+	variantDirectory  string
+	variantGeneration chan struct{}
 }
 
 // NewArtworkCache creates an artwork cache below dataDir.
@@ -66,7 +68,22 @@ func NewArtworkCache(dataDir string) (*ArtworkCache, error) {
 	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() || info.Mode().Perm()&0o077 != 0 {
 		return nil, errors.New("artwork cache directory is invalid or accessible by other users")
 	}
-	return &ArtworkCache{directory: directory}, nil
+	variantDirectory := filepath.Join(directory, "variants")
+	if err := os.MkdirAll(variantDirectory, 0o700); err != nil {
+		return nil, fmt.Errorf("create artwork variant cache: %w", err)
+	}
+	variantInfo, err := os.Lstat(variantDirectory)
+	if err != nil {
+		return nil, fmt.Errorf("inspect artwork variant cache: %w", err)
+	}
+	if variantInfo.Mode()&os.ModeSymlink != 0 || !variantInfo.IsDir() || variantInfo.Mode().Perm()&0o077 != 0 {
+		return nil, errors.New("artwork variant cache directory is invalid or accessible by other users")
+	}
+	return &ArtworkCache{
+		directory:         directory,
+		variantDirectory:  variantDirectory,
+		variantGeneration: make(chan struct{}, 1),
+	}, nil
 }
 
 // Store validates and atomically stores artwork. Identical artwork reuses its

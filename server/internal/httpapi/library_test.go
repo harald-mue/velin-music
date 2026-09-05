@@ -5,6 +5,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"image"
+	"image/color"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -20,6 +23,7 @@ import (
 func TestLibraryEndpointsRequireBearerToken(t *testing.T) {
 	handler := openHTTPTestHandler(t)
 	for _, path := range []string{
+		"/api/v1/library/summary",
 		"/api/v1/artists",
 		"/api/v1/albums",
 		"/api/v1/tracks",
@@ -59,6 +63,16 @@ func TestLibraryEndpointsListGetAndSearch(t *testing.T) {
 	}
 
 	authHeader := "Bearer " + issued.Token
+	summaryReq := httptest.NewRequest(http.MethodGet, "/api/v1/library/summary", nil)
+	summaryReq.Header.Set("Authorization", authHeader)
+	summaryRes := httptest.NewRecorder()
+	handler.ServeHTTP(summaryRes, summaryReq)
+	var summary library.Summary
+	if summaryRes.Code != http.StatusOK || json.NewDecoder(summaryRes.Body).Decode(&summary) != nil ||
+		summary.ArtistCount != 2 || summary.AlbumCount != 2 || summary.TrackCount != 2 || summary.Revision == "" {
+		t.Fatalf("summary = %d %+v", summaryRes.Code, summary)
+	}
+
 	artistsReq := httptest.NewRequest(http.MethodGet, "/api/v1/artists?limit=10", nil)
 	artistsReq.Header.Set("Authorization", authHeader)
 	artistsRes := httptest.NewRecorder()
@@ -173,6 +187,31 @@ func TestCoverEndpointServesCachedArtwork(t *testing.T) {
 	}
 	if len(res.Body.Bytes()) == 0 {
 		t.Fatal("cover body is empty")
+	}
+	if got := res.Header().Get("Cache-Control"); got != "private, max-age=31536000, immutable" {
+		t.Fatalf("cache control = %q", got)
+	}
+
+	variantReq := httptest.NewRequest(http.MethodGet, "/api/v1/covers/"+coverID+"/128", nil)
+	variantReq.Header.Set("Authorization", "Bearer "+issued.Token)
+	variantRes := httptest.NewRecorder()
+	handler.ServeHTTP(variantRes, variantReq)
+	if variantRes.Code != http.StatusOK {
+		t.Fatalf("cover variant status = %d, body = %s", variantRes.Code, variantRes.Body.String())
+	}
+	if got := variantRes.Header().Get("Content-Type"); got != "image/jpeg" {
+		t.Fatalf("variant content type = %q, want image/jpeg", got)
+	}
+	if len(variantRes.Body.Bytes()) == 0 {
+		t.Fatal("cover variant body is empty")
+	}
+
+	invalidReq := httptest.NewRequest(http.MethodGet, "/api/v1/covers/"+coverID+"/1024", nil)
+	invalidReq.Header.Set("Authorization", "Bearer "+issued.Token)
+	invalidRes := httptest.NewRecorder()
+	handler.ServeHTTP(invalidRes, invalidReq)
+	if invalidRes.Code != http.StatusBadRequest {
+		t.Fatalf("invalid cover variant status = %d, want %d", invalidRes.Code, http.StatusBadRequest)
 	}
 }
 
@@ -335,6 +374,11 @@ func seedHTTPTestLibraryWithArtwork(t *testing.T, database *sql.DB, dataDir stri
 }
 
 func testPNGBytes() []byte {
-	const png = "\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x01\x01\x01\x00\x18\xdd\x8d\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
-	return []byte(png)
+	picture := image.NewRGBA(image.Rect(0, 0, 2, 2))
+	picture.Set(0, 0, color.RGBA{R: 220, G: 40, B: 80, A: 255})
+	var encoded bytes.Buffer
+	if err := png.Encode(&encoded, picture); err != nil {
+		panic(err)
+	}
+	return encoded.Bytes()
 }

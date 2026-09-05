@@ -165,7 +165,65 @@ func (c *ArtworkCache) GarbageCollect(ctx context.Context, db *sql.DB) (int, err
 		}
 		removed++
 	}
+
+	referencedIDs, err := referencedCoverIDs(ctx, db)
+	if err != nil {
+		return removed, err
+	}
+	variantEntries, err := os.ReadDir(c.variantDirectory)
+	if err != nil {
+		return removed, fmt.Errorf("read artwork variant cache directory: %w", err)
+	}
+	for _, entry := range variantEntries {
+		if err := ctx.Err(); err != nil {
+			return removed, err
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return removed, fmt.Errorf("inspect artwork variant cache entry: %w", err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			continue
+		}
+		name := entry.Name()
+		coverID := ""
+		if len(name) > 64 && isCoverChecksum(name[:64]) {
+			coverID = name[:64]
+		}
+		if _, ok := referencedIDs[coverID]; ok &&
+			(name == coverID+"-128.jpg" || name == coverID+"-256.jpg" || name == coverID+"-512.jpg") {
+			continue
+		}
+		if err := os.Remove(filepath.Join(c.variantDirectory, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return removed, fmt.Errorf("remove unreferenced artwork variant: %w", err)
+		}
+		removed++
+	}
+	if err := trimArtworkVariantCache(c.variantDirectory, maxArtworkVariantCacheFiles, maxArtworkVariantCacheBytes); err != nil {
+		return removed, err
+	}
 	return removed, nil
+}
+
+func referencedCoverIDs(ctx context.Context, db *sql.DB) (map[string]struct{}, error) {
+	rows, err := db.QueryContext(ctx, "SELECT id FROM covers")
+	if err != nil {
+		return nil, fmt.Errorf("list referenced cover IDs: %w", err)
+	}
+	defer rows.Close()
+
+	referenced := make(map[string]struct{})
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan referenced cover ID: %w", err)
+		}
+		referenced[id] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate referenced cover IDs: %w", err)
+	}
+	return referenced, nil
 }
 
 func referencedCoverCachePaths(ctx context.Context, db *sql.DB) (map[string]struct{}, error) {

@@ -32,6 +32,7 @@ type Config struct {
 type Server struct {
 	handler   http.Handler
 	scheduler *library.ScanScheduler
+	prewarmer *library.ArtworkPrewarmer
 }
 
 // Handler returns the HTTP handler served by the API.
@@ -44,10 +45,15 @@ func (s *Server) Handler() http.Handler {
 
 // Stop shuts down background library services.
 func (s *Server) Stop() {
-	if s == nil || s.scheduler == nil {
+	if s == nil {
 		return
 	}
-	s.scheduler.Stop()
+	if s.scheduler != nil {
+		s.scheduler.Stop()
+	}
+	if s.prewarmer != nil {
+		s.prewarmer.Stop()
+	}
 }
 
 // New returns the configured HTTP API server.
@@ -73,10 +79,16 @@ func New(cfg Config, database *sql.DB) (*Server, error) {
 	queries := library.NewQueryRepository(database)
 	roots := library.NewStore(database)
 	covers := library.NewCoverStore(database, cache)
+	coverReader := library.NewCoverReader(database, cache)
 	tracks := library.NewTrackRepositoryWithArtwork(database, covers)
 	scanner := library.NewScanner(roots, tracks)
 	scanQueries := library.NewScanQueryRepository(database)
-	scanService := library.NewScanService(scanner, roots, scanQueries)
+	var prewarmer *library.ArtworkPrewarmer
+	scanService := library.NewScanService(scanner, roots, scanQueries, func() {
+		if prewarmer != nil {
+			prewarmer.Trigger()
+		}
+	})
 	pairLimiter := auth.NewRateLimiter(20, auth.PairingRateWindow)
 	loginLimiter := auth.NewRateLimiter(10, auth.AdminLoginWindow)
 
@@ -86,7 +98,7 @@ func New(cfg Config, database *sql.DB) (*Server, error) {
 	registerLibraryRoutes(mux, libraryServices{
 		tokens:  tokens,
 		queries: queries,
-		covers:  library.NewCoverReader(database, cache),
+		covers:  coverReader,
 		streams: library.NewTrackStreamer(database),
 	})
 	registerAdminRoutes(mux, adminServices{
@@ -112,6 +124,9 @@ func New(cfg Config, database *sql.DB) (*Server, error) {
 	}
 	adminUI.Register(mux)
 
+	prewarmer = library.NewArtworkPrewarmer(coverReader)
+	prewarmer.Trigger()
+
 	if cfg.ScanOnStartup {
 		go func() {
 			if !scanService.TryStartAll() {
@@ -126,7 +141,7 @@ func New(cfg Config, database *sql.DB) (*Server, error) {
 		scheduler.Start()
 	}
 
-	return &Server{handler: mux, scheduler: scheduler}, nil
+	return &Server{handler: mux, scheduler: scheduler, prewarmer: prewarmer}, nil
 }
 
 type statusResponse struct {

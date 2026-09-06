@@ -108,6 +108,8 @@ GET /api/v1/search?q=<query>
 
 The revision changes whenever an indexed track row is inserted, updated, or deleted. Clients must compare it only for equality and must not infer scan or database state from its value.
 
+Android uses this contract to build a local snapshot. It reads the summary, downloads every artist, album, and track page with `limit=200` into a staging Room generation, then reads the summary again. It activates the generation only when the two revisions match and all three downloaded counts equal the first summary. This is client-side synchronization; the API does not provide a delta feed or historical snapshot cursor.
+
 Artist, album, track, and FTS search repositories provide bounded keyset pagination and deterministic ordering. Track browse cursors are bound to their artist/album filter scope; search cursors are bound to the normalized query. Reusing either cursor with different inputs is rejected. The HTTP handlers below require a valid device bearer token.
 
 Collection responses use this shape:
@@ -126,6 +128,8 @@ The initial search endpoint returns track models. Search input is treated as tex
 
 Detail responses expose metadata and opaque related IDs, not indexed roots or source paths. Track metadata uses lowercase `flac` or `mp3` format values and may include duration in milliseconds, sample rate, bit depth when available, channel count, genre, date, disc/track positions, and related artist/album/cover IDs. There is no playlist or saved-queue HTTP API; the Android client stores one optional queue snapshot locally and re-resolves track IDs through `GET /api/v1/tracks/{id}`.
 
+For snapshot synchronization only, Android retries transport failures and HTTP 408, 429, 500, 502, 503, and 504, with no more than three attempts total per request. Other HTTP failures are not retried. Search, artist detail, track detail, and Android Auto remain direct network clients; album detail may read the active local snapshot.
+
 ## Artwork and streaming
 
 ```text
@@ -135,7 +139,7 @@ GET /api/v1/tracks/{id}/stream
 HEAD /api/v1/tracks/{id}/stream
 ```
 
-Cover responses are served from the artwork cache with a validated `Content-Type` (`image/jpeg`, `image/png`, `image/gif`, or `image/webp`). The original route preserves the indexed bytes. The derivative route accepts only `128`, `256`, or `512`, preserves aspect ratio, and returns an on-demand JPEG bounded to that maximum dimension. Generation is serialized, installed atomically into a private cache, and the derivative cache is capped at 4,096 files and 512 MiB. Cover IDs are content hashes, so original and derivative responses use `private, max-age=31536000, immutable`. All cover routes require a device bearer token, use `http.ServeContent`, and never expose cache paths.
+Cover responses are served from the artwork cache with a validated `Content-Type` (`image/jpeg`, `image/png`, `image/gif`, or `image/webp`). The original route preserves the indexed bytes. The derivative route accepts only `128`, `256`, or `512`, preserves aspect ratio, and returns a JPEG bounded to that maximum dimension. Generation is serialized, installed atomically into a private cache, and the derivative cache is capped at 4,096 files and 512 MiB. A cancellable/coalescing worker prepares 256 and 512 px variants after startup and successful scan work, pausing 10 ms per variant and selecting at most 1,024 referenced covers in deterministic order per pass; cache misses remain generated on demand. Cover IDs are content hashes, so original and derivative responses use `private, max-age=31536000, immutable`. All cover routes require a device bearer token, use `http.ServeContent`, and never expose cache paths.
 
 Stream responses serve the original FLAC or MP3 file with `audio/flac` or `audio/mpeg`, `Content-Length`, validators, `Last-Modified`, and HTTP byte-range behavior via `http.ServeContent`. `GET` and `HEAD /api/v1/tracks/{id}/stream` require a device bearer token.
 

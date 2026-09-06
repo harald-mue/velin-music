@@ -22,6 +22,17 @@ The baseline tables and FTS5 table are created by `server/migrations/001_initial
 
 The Android client’s one saved playback queue is a private on-device JSON file, not a SQLite table and not a server playlist.
 
+## Android Room snapshot cache
+
+Android also has an independent app-private Room database, `library-cache.db`, for public catalog metadata. Its version 1 schema is exported under `android/app/schemas/` and contains:
+
+- `cache_state`: one row per credential-derived namespace, including the active generation, opaque server revision, exact entity counts, and activation time;
+- `cached_artists`, `cached_albums`, and `cached_tracks`: generation-scoped public API models plus stable server order.
+
+The namespace is the hexadecimal SHA-256 digest of the normalized server URL, a NUL byte, and the device ID. It does not include the bearer token. A refresh writes all 200-item server pages to a new staging generation. It reads the server summary before and after transfer, and activates the generation in one Room transaction only when the revision is unchanged and downloaded artist, album, and track counts exactly match the first summary. Failed, cancelled, changed-revision, or count-mismatched refreshes never replace the active generation. Disconnect deletes rows and state for the current namespace.
+
+Room queries join catalog rows to `cache_state.active_generation`, so staging data is invisible. Library lists use Room `PagingSource` instances configured with a page size of 50; Home reads 16 albums and album detail reads active cached album tracks. Search, artist detail, track detail, and Android Auto do not query this cache.
+
 ## Relationships and constraints
 
 - Every track belongs to one library root and has a server-generated opaque ID.

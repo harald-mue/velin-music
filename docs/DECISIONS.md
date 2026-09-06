@@ -44,7 +44,7 @@ SQLite fits a self-hosted single-server product, supports transactions and index
 
 ### Consequences
 
-Connection, migration, backup, WAL, and concurrent scan/read behavior require deliberate configuration and tests. The current server uses a pure-Go SQLite driver and a single connection; this can be revisited only with measurements and tests.
+Connection, migration, backup, WAL, and concurrent scan/read behavior require deliberate configuration and tests. The current server uses a pure-Go SQLite driver and the bounded four-connection pool recorded in ADR-027.
 
 ## ADR-003 — Native Kotlin Android application
 
@@ -286,7 +286,7 @@ This separates recoverable file problems from unsafe incomplete scans. Administr
 
 ### Consequences
 
-A completed scan can contain errors and therefore represent an incomplete subset of newly indexable files. Cancellation has its own persisted status. Multi-root orchestration continues after an independent root failure but stops on cancellation. Scan status and error counts must be visible in the future administration UI. Crash-left scan markers require later cleanup.
+A completed scan can contain errors and therefore represent an incomplete subset of newly indexable files. Cancellation has its own persisted status. Multi-root orchestration continues after an independent root failure but stops on cancellation. Scan status and error counts are visible in the administration UI. Startup recovery marks crash-left scans failed and clears their markers.
 
 ## ADR-014 — Keyset pagination for library queries
 
@@ -396,7 +396,7 @@ A single bootstrap account keeps first-run setup simple for self-hosted deployme
 
 ### Consequences
 
-Additional administrators, password rotation, and session listing/revocation remain future work. Pairing QR payloads require a caller-supplied or configured public `server_url` because the process may not know its external address. The server-rendered administration UI in M7 should reuse the same cookie and CSRF contract rather than introducing a second admin auth mechanism.
+Additional administrators, password rotation, and session listing/revocation remain future work. Pairing QR payloads require a caller-supplied or configured public `server_url` because the process may not know its external address. The server-rendered administration UI reuses the same cookie and CSRF contract rather than introducing a second admin auth mechanism.
 
 ## ADR-019 — Environment-driven startup scan and periodic scheduler
 
@@ -530,11 +530,11 @@ Keep the bounded keyset API and have Android request 200-item artist/album pages
 
 ### Consequences
 
-Users no longer press **Load more**, while every HTTP response remains capped at 200 items. Reopening recently viewed details avoids another round trip; a changed library revision clears the cache, which never stores credentials or paths. The first request for a derivative performs bounded server-side decoding; simultaneous generation is serialized and subsequent requests use the private cache. Android falls back to the authenticated original route after a derivative `404`, allowing staged server/client deployment. Exact Home counts and lazy section loading are defined by ADR-026. Persistent Paging remains a later measured decision.
+Users no longer press **Load more**, while every HTTP response remains capped at 200 items. Reopening recently viewed details avoids another round trip; a changed library revision clears the in-memory cache, which never stores credentials or paths. The first request for a derivative performs bounded server-side decoding; simultaneous generation is serialized and subsequent requests use the private cache. Android falls back to the authenticated original route after a derivative `404`, allowing staged server/client deployment. Exact Home counts and lazy section loading are defined by ADR-026. ADR-028 supersedes the deferred persistent-Paging decision.
 
 ## ADR-026 — Trigger-maintained library revision and lazy Android sections
 
-Status: Accepted
+Status: Accepted; Android loading behavior extended by ADR-028
 
 Date: 2026-09-06
 
@@ -544,11 +544,11 @@ Home needed exact totals without loading the first page of every entity type, an
 
 ### Decision
 
-Maintain one non-negative SQLite revision counter through `AFTER INSERT`, `AFTER UPDATE`, and `AFTER DELETE` triggers on indexed tracks. Return an opaque hash of that counter with exact artist, album, and track counts from one read snapshot at `GET /api/v1/library/summary`. Android startup requests only status, summary, and a bounded 16-album Home shelf. Full album, artist, and track pages load independently on first navigation. When the revision changes, clear bounded detail/search caches and reload only sections previously requested during the process lifetime.
+Maintain one non-negative SQLite revision counter through `AFTER INSERT`, `AFTER UPDATE`, and `AFTER DELETE` triggers on indexed tracks. Return an opaque hash of that counter with exact artist, album, and track counts from one read snapshot at `GET /api/v1/library/summary`. The initial Android design requested only status, summary, and a bounded 16-album Home shelf at startup, then loaded full album, artist, and track pages independently on first navigation. When the revision changed, it cleared bounded detail/search caches and reloaded only sections previously requested during the process lifetime. ADR-028 replaced that network-loading policy with background complete-snapshot synchronization and Room-backed paging while retaining the summary and revision contract.
 
 ### Consequences
 
-The revision can advance during a running scan and after root deletion; clients compare it only for equality. Existing databases begin at revision zero when migration 006 is applied, which is safe because no earlier client has persisted that revision contract. Home counts no longer depend on page size, and initial startup no longer requests artist or track pages. This is cache invalidation, not an offline synchronization or delta protocol.
+The revision can advance during a running scan and after root deletion; clients compare it only for equality. Existing databases begin at revision zero when migration 006 is applied, which is safe because no earlier client persisted that revision contract. Home counts no longer depend on page size. ADR-028 now uses the revision and counts to verify complete Room snapshots without introducing a delta protocol.
 
 ## ADR-027 — Bounded concurrent SQLite reads during scans
 
@@ -567,3 +567,39 @@ Allow at most four SQLite connections and retain four idle connections. Configur
 ### Consequences
 
 API reads can use WAL snapshots while a scan writes, removing single-connection starvation without allowing multiple scanners. Album creation remains safe because only the globally serialized scanner performs track/album upserts. All future connection-local PRAGMAs must be configured through the DSN rather than once on an arbitrary pooled connection.
+
+## ADR-028 — Revision-verified Android Room snapshots
+
+Status: Accepted
+
+Date: 2026-09-06
+
+### Context
+
+Network-backed cursor accumulation still made repeat launches dependent on connectivity and retained growing lists in Compose state. The server exposes an opaque mutation revision and exact counts, but it does not expose historical snapshot cursors or deltas.
+
+### Decision
+
+Persist public artist, album, and track models in app-private Room generations. Namespace rows by SHA-256 of normalized server URL, NUL, and device ID; exclude the bearer token. Download complete collections in 200-item pages to a staging generation, compare summary revisions before and after, verify all three downloaded counts against the first summary, and atomically activate only a complete matching generation. Keep the previous active generation on failure or mismatch. Serve library lists through Room PagingSource pages of 50, Home through a 16-album query, and album detail from Room when active. Use the network directly for search, artist detail, track detail, and Android Auto. Bootstrap summary plus the 16-album shelf only when no active snapshot exists. Retry snapshot requests at most three times and only for transport failures or HTTP 408, 429, 500, 502, 503, and 504. Delete the current namespace on disconnect and export Room schema version 1.
+
+### Consequences
+
+Cached catalog screens can render without rebuilding unbounded Compose lists. Synchronization transfers the full public catalog because no delta protocol exists, but pages, staging visibility, retries, and activation remain bounded and deterministic. Credential rotation for the same server URL and device ID reuses the namespace without deriving storage identity from a secret.
+
+## ADR-029 — Bounded artwork derivative prewarming
+
+Status: Accepted
+
+Date: 2026-09-06
+
+### Context
+
+On-demand derivatives avoid oversized Android artwork transfers, but the first request still pays decoding and encoding cost. Unbounded eager generation could compete with scans or consume the 4,096-file, 512 MiB derivative-cache budget.
+
+### Decision
+
+Run one cancellable background prewarmer and coalesce concurrent triggers. Trigger it once after server startup and after successful scan work. For each pass, select at most 1,024 distinct track- or album-referenced cover IDs in deterministic ID order, ensure only 256 and 512 px variants, and pause 10 ms after each variant attempt.
+
+### Consequences
+
+One pass requests at most 2,048 cache entries, remaining within the file-count budget even if every variant is new. Failures are logged per item and do not stop the pass; server shutdown cancels active work and waits for the worker. The 128 px route remains on-demand.

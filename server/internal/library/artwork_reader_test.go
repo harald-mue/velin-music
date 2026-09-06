@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestCoverReaderOpensIndexedCover(t *testing.T) {
@@ -74,6 +75,64 @@ func TestCoverReaderCreatesAndReusesBoundedVariant(t *testing.T) {
 	if _, _, err := reader.OpenVariant(context.Background(), cover.ID, 1024); err == nil {
 		t.Fatal("OpenVariant(1024) error = nil")
 	}
+}
+
+func TestCoverReaderEnsureVariantIsIdempotent(t *testing.T) {
+	database := openLibraryTestDB(t)
+	cache, err := NewArtworkCache(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewArtworkCache() error = %v", err)
+	}
+	cover, err := NewCoverStore(database, cache).Store(context.Background(), testPNGImage(400, 200), "image/png")
+	if err != nil {
+		t.Fatalf("Store() error = %v", err)
+	}
+	reader := NewCoverReader(database, cache)
+	if err := reader.EnsureVariant(context.Background(), cover.ID, 256); err != nil {
+		t.Fatalf("EnsureVariant() error = %v", err)
+	}
+
+	path := filepath.Join(cache.variantDirectory, cover.ID+"-256.jpg")
+	fixedTime := time.Unix(1_700_000_000, 0)
+	if err := os.Chtimes(path, fixedTime, fixedTime); err != nil {
+		t.Fatalf("set variant time: %v", err)
+	}
+	if err := reader.EnsureVariant(context.Background(), cover.ID, 256); err != nil {
+		t.Fatalf("second EnsureVariant() error = %v", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat variant: %v", err)
+	}
+	if !info.ModTime().Equal(fixedTime) {
+		t.Fatalf("variant was rewritten: mod time = %v, want %v", info.ModTime(), fixedTime)
+	}
+}
+
+func TestCoverReaderEnsureVariantReplacesInvalidEntry(t *testing.T) {
+	database := openLibraryTestDB(t)
+	cache, err := NewArtworkCache(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewArtworkCache() error = %v", err)
+	}
+	cover, err := NewCoverStore(database, cache).Store(context.Background(), testPNGImage(400, 200), "image/png")
+	if err != nil {
+		t.Fatalf("Store() error = %v", err)
+	}
+	path := filepath.Join(cache.variantDirectory, cover.ID+"-512.jpg")
+	if err := os.WriteFile(path, []byte("invalid"), 0o600); err != nil {
+		t.Fatalf("write invalid variant: %v", err)
+	}
+
+	reader := NewCoverReader(database, cache)
+	if err := reader.EnsureVariant(context.Background(), cover.ID, 512); err != nil {
+		t.Fatalf("EnsureVariant() error = %v", err)
+	}
+	file, _, err := openArtworkVariant(path, 512)
+	if err != nil {
+		t.Fatalf("open replaced variant: %v", err)
+	}
+	_ = file.Close()
 }
 
 func TestCoverReaderRejectsMissingOrInvalidCovers(t *testing.T) {

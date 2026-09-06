@@ -4,13 +4,20 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"image"
+	"image/color"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/harald-mue/velin-music/server/internal/auth"
 	"github.com/harald-mue/velin-music/server/internal/db"
+	"github.com/harald-mue/velin-music/server/internal/library"
 )
 
 func openHTTPTestServer(t *testing.T) *Server {
@@ -114,4 +121,62 @@ func TestProtectedRequiresBearerToken(t *testing.T) {
 	if res.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want %d", res.Code, http.StatusUnauthorized)
 	}
+}
+
+func TestNewPrewarmsReferencedArtwork(t *testing.T) {
+	dataDir := t.TempDir()
+	database, err := db.Open(context.Background(), filepath.Join(dataDir, "velin.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	cache, err := library.NewArtworkCache(dataDir)
+	if err != nil {
+		t.Fatalf("NewArtworkCache() error = %v", err)
+	}
+	cover, err := library.NewCoverStore(database, cache).Store(context.Background(), serverTestPNG(), "image/png")
+	if err != nil {
+		t.Fatalf("store cover: %v", err)
+	}
+	if _, err := database.Exec(
+		"INSERT INTO albums (id, title, cover_id) VALUES ('album', 'Album', ?)",
+		cover.ID,
+	); err != nil {
+		t.Fatalf("insert album: %v", err)
+	}
+
+	api, err := New(Config{Version: "test", DataDir: dataDir}, database)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	t.Cleanup(api.Stop)
+
+	deadline := time.Now().Add(3 * time.Second)
+	for _, size := range []int{256, 512} {
+		path := filepath.Join(dataDir, "covers", "variants", cover.ID+"-"+strconv.Itoa(size)+".jpg")
+		for {
+			if _, err := os.Stat(path); err == nil {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("timed out waiting for %d px startup variant", size)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	api.Stop()
+}
+
+func serverTestPNG() []byte {
+	imageData := image.NewRGBA(image.Rect(0, 0, 4, 4))
+	for y := range 4 {
+		for x := range 4 {
+			imageData.SetRGBA(x, y, color.RGBA{R: 20, G: 40, B: 60, A: 255})
+		}
+	}
+	var buffer bytes.Buffer
+	if err := png.Encode(&buffer, imageData); err != nil {
+		panic(err)
+	}
+	return buffer.Bytes()
 }

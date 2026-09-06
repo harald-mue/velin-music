@@ -85,12 +85,15 @@ func TestAdminLibraryRootsAndScans(t *testing.T) {
 	for time.Now().Before(deadline) {
 		scansRes := httptest.NewRecorder()
 		handler.ServeHTTP(scansRes, scansReq)
-		if scansRes.Code == http.StatusOK && json.NewDecoder(scansRes.Body).Decode(&scans) == nil && len(scans.Items) > 0 {
+		if scansRes.Code == http.StatusOK &&
+			json.NewDecoder(scansRes.Body).Decode(&scans) == nil &&
+			len(scans.Items) > 0 &&
+			scans.Items[0].Status != "running" {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if len(scans.Items) == 0 {
+	if len(scans.Items) == 0 || scans.Items[0].Status == "running" {
 		t.Fatalf("list scans = %+v", scans)
 	}
 

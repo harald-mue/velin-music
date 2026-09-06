@@ -29,35 +29,57 @@ var artworkVariantSizes = map[int]struct{}{
 	512: {},
 }
 
+var errInvalidArtworkVariant = errors.New("artwork variant cache entry is invalid")
+
 // IsArtworkVariantSize reports whether size is an exposed bounded thumbnail size.
 func IsArtworkVariantSize(size int) bool {
 	_, ok := artworkVariantSizes[size]
 	return ok
 }
 
+// EnsureVariant idempotently creates a bounded JPEG derivative for an indexed cover.
+func (r *CoverReader) EnsureVariant(ctx context.Context, id string, size int) error {
+	file, _, err := r.ensureAndOpenVariant(ctx, id, size)
+	if err != nil {
+		return err
+	}
+	return file.Close()
+}
+
 // OpenVariant opens or creates a bounded JPEG derivative for an indexed cover.
 func (r *CoverReader) OpenVariant(ctx context.Context, id string, size int) (*os.File, CoverFile, error) {
+	file, metadata, err := r.ensureAndOpenVariant(ctx, id, size)
+	if err != nil {
+		return nil, CoverFile{}, err
+	}
+	original, content, err := r.Open(ctx, id)
+	if err != nil {
+		_ = file.Close()
+		return nil, CoverFile{}, err
+	}
+	_ = original.Close()
+	metadata.ModTime = content.ModTime
+	return file, metadata, nil
+}
+
+func (r *CoverReader) ensureAndOpenVariant(
+	ctx context.Context,
+	id string,
+	size int,
+) (*os.File, CoverFile, error) {
 	if !IsArtworkVariantSize(size) {
 		return nil, CoverFile{}, errors.New("artwork variant size is not supported")
 	}
 	if r == nil || r.cache == nil || r.cache.variantDirectory == "" {
 		return nil, CoverFile{}, errors.New("cover reader is not configured")
 	}
-	original, content, err := r.Open(ctx, id)
-	if err != nil {
-		return nil, CoverFile{}, err
-	}
-	defer original.Close()
 	if !isCoverChecksum(id) {
 		return nil, CoverFile{}, errors.New("cover ID is invalid")
 	}
 
 	path := filepath.Join(r.cache.variantDirectory, fmt.Sprintf("%s-%d.jpg", id, size))
 	if file, metadata, err := openArtworkVariant(path, size); err == nil {
-		metadata.ModTime = content.ModTime
 		return file, metadata, nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return nil, CoverFile{}, err
 	}
 
 	select {
@@ -67,23 +89,24 @@ func (r *CoverReader) OpenVariant(ctx context.Context, id string, size int) (*os
 		return nil, CoverFile{}, ctx.Err()
 	}
 	if file, metadata, err := openArtworkVariant(path, size); err == nil {
-		metadata.ModTime = content.ModTime
 		return file, metadata, nil
+	} else if errors.Is(err, errInvalidArtworkVariant) {
+		if removeErr := os.Remove(path); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+			return nil, CoverFile{}, fmt.Errorf("remove invalid artwork variant: %w", removeErr)
+		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, CoverFile{}, err
 	}
-	if _, err := original.Seek(0, 0); err != nil {
-		return nil, CoverFile{}, fmt.Errorf("seek original artwork: %w", err)
-	}
-	if err := createArtworkVariant(ctx, original, r.cache.variantDirectory, path, size); err != nil {
-		return nil, CoverFile{}, err
-	}
-	file, metadata, err := openArtworkVariant(path, size)
+
+	original, _, err := r.Open(ctx, id)
 	if err != nil {
 		return nil, CoverFile{}, err
 	}
-	metadata.ModTime = content.ModTime
-	return file, metadata, nil
+	defer original.Close()
+	if err := createArtworkVariant(ctx, original, r.cache.variantDirectory, path, size); err != nil {
+		return nil, CoverFile{}, err
+	}
+	return openArtworkVariant(path, size)
 }
 
 func createArtworkVariant(
@@ -198,7 +221,7 @@ func openArtworkVariant(path string, maximumDimension int) (*os.File, CoverFile,
 		return nil, CoverFile{}, err
 	}
 	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() < 1 || info.Size() > maxArtworkVariantBytes {
-		return nil, CoverFile{}, errors.New("artwork variant cache entry is invalid")
+		return nil, CoverFile{}, errInvalidArtworkVariant
 	}
 	file, err := os.Open(path)
 	if err != nil {
@@ -208,7 +231,7 @@ func openArtworkVariant(path string, maximumDimension int) (*os.File, CoverFile,
 	if err != nil || format != "jpeg" || config.Width < 1 || config.Height < 1 ||
 		config.Width > maximumDimension || config.Height > maximumDimension {
 		_ = file.Close()
-		return nil, CoverFile{}, errors.New("artwork variant cache entry is invalid")
+		return nil, CoverFile{}, errInvalidArtworkVariant
 	}
 	if _, err := file.Seek(0, 0); err != nil {
 		_ = file.Close()

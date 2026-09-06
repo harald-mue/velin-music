@@ -1,12 +1,12 @@
 # Velin Development Progress
 
-Last updated: 2026-09-05
+Last updated: 2026-09-06
 
 ## Current status
 
 The Go executable provides storage, indexing, authentication, administration, protected library APIs, artwork, and original-format streaming. The native Android project builds with Kotlin, Compose, and API 37 and provides a graphite visual system with Home/Queue/Library navigation, in-library search, and adaptive portrait/landscape layouts.
 
-Android exact summary counts, a bounded Home shelf, lazy library browsing/search, automatic cursor pagination, album/artist/track details, bounded visible-result/album queues, album/artist add-to-queue, queue reordering, a device-local saved-queue slot, and track-detail enqueue actions are wired through Media3, including authenticated artwork, Now Playing, seeking, automatic advance, previous/next, queue inspection/removal, shuffle, and repeat. Playback is owned by an exported `MediaLibraryService` that also exposes an Android Auto media library (Albums and Artists).
+Android has exact summary counts, a revision/count-verified Room snapshot cache, PagingSource-backed library lists, a cached 16-album Home shelf, and cached album detail when active. Search, artist detail, track detail, and Android Auto remain network-backed. Bounded visible-result/album queues, album/artist add-to-queue, queue reordering, a device-local saved-queue slot, and track-detail enqueue actions are wired through Media3, including authenticated artwork, Now Playing, seeking, automatic advance, previous/next, queue inspection/removal, shuffle, and repeat. Playback is owned by an exported `MediaLibraryService` that exposes the Android Auto media library (Albums and Artists). The server prewarms bounded 256/512 px artwork variants in one low-pressure worker.
 
 ## Current milestone
 
@@ -50,7 +50,7 @@ Android exact summary counts, a bounded Home shelf, lazy library browsing/search
 - [x] Kotlin/Compose Android project with Gradle Wrapper, API 37 build, polished graphite/ice-blue theme, accessible Material iconography, primary navigation shell, and unit tests.
 - [x] Android QR/manual pairing with CameraX/ZXing, strict payload parsing, bounded OkHttp response handling, HTTP(S) URL normalization, safe errors, and Android Keystore-backed AES-GCM credential storage.
 - [x] Server administration pairing defaults `server_url` to the editable browser-visible base (including a reverse-proxy path prefix) and renders an ephemeral QR image directly from the token-free `server_url`/`code` payload.
-- [x] Authenticated Android OkHttp client with bearer injection, bounded JSON decoding, revocation handling, exact summary/revision loading, and lazy section requests.
+- [x] Authenticated Android OkHttp client with bearer injection, bounded JSON decoding, revocation handling, exact summary/revision loading, and full snapshot synchronization.
 - [x] Android Home with exact server counts and a 16-album shelf, lazy first-load Library sections, searchable track results, and cursor-paginated views with loading, empty, and recoverable-error states.
 - [x] Exported Android Media3 `MediaLibraryService` owning ExoPlayer and a `MediaLibrarySession`, with media audio focus, becoming-noisy handling, Android Auto media declaration, and foreground-service manifest declarations.
 - [x] Server-bound Media3 `OkHttpDataSource.Factory` with in-memory bearer authorization, exact paired-origin stream validation, disabled redirects, and token-free FLAC/MP3 `MediaItem` construction.
@@ -64,6 +64,11 @@ Android exact summary counts, a bounded Home shelf, lazy library browsing/search
 - [x] Media3-backed queue screen with current-item highlighting, direct selection, safe removal, long-press drag reorder (shuffle off), shuffle, repeat Off/All/One, Clear, and one device-local Save/Load slot.
 - [x] Extended ExoPlayer buffering (2–5 minute window) with 120-second stream read timeouts; network-loss cancellation applies on devices, not emulators.
 - [x] Android Auto media browse hierarchy for Albums and Artists, paginated children, FTS track search, and album-queue playback through the shared Media3 session.
+- [x] App-private Room v1 catalog cache namespaced by SHA-256 of normalized server URL, NUL, and device ID, with the schema exported and the current namespace cleared on disconnect.
+- [x] Complete 200-item-page snapshot downloads into staging generations, pre/post revision and exact-count verification, atomic activation, and retention of the previous snapshot after incomplete refreshes.
+- [x] Room PagingSource-backed artist/album/track lists with page size 50, cached 16-album Home shelf, and cached album detail when active; search, artist detail, track detail, and Android Auto remain network-backed.
+- [x] Empty-cache-only summary/shelf bootstrap and snapshot retries limited to transport failures plus HTTP 408/429/500/502/503/504 for at most three attempts.
+- [x] One cancellable/coalescing artwork-prewarm worker triggered after startup and successful scan work, limited per pass to deterministic 1,024 referenced covers, 256/512 px variants, and a 10 ms pause after each variant.
 
 ## Deferred
 
@@ -76,7 +81,7 @@ Android exact summary counts, a bounded Home shelf, lazy library browsing/search
 - Artwork-cache files for removed cover rows are garbage-collected at startup.
 - Album identity currently uses exact title, album-artist ID, and year without a schema-level unique constraint; correctness relies on the globally serialized scanner being the only album/track upsert writer. The bounded pool permits concurrent reads, not concurrent scans.
 - Scan progress reports files seen and indexed, not a percentage: obtaining an exact total first would require a second complete filesystem walk. Counters are checkpointed at most once per second or per 100 files and finalized exactly after discovery/reconciliation.
-- A physical 2,096-track remote library exposed manual pagination, cold repeated detail requests, and slow first-load full-size artwork. Phases 1–3 in `docs/PERFORMANCE.md` now provide automatic near-end pagination, bounded detail caches, parallel artist requests, size-specific artwork, exact summary counts, and lazy sections; physical-device remeasurement remains.
+- A physical 2,096-track remote library exposed manual pagination, cold repeated detail requests, and slow first-load full-size artwork. Phases 1–4 in `docs/PERFORMANCE.md` now provide automatic near-end pagination, bounded detail caches, parallel artist requests, size-specific artwork, exact summary counts, revision-verified Room snapshots, and local Paging. Initial snapshot activation and cached restart are device-validated; scrolling, detail reopening, artwork-prewarming, transfer, and memory measurements remain.
 - Broad one-character search prefixes can rank many FTS rows; performance still needs benchmarking against the 100,000-track target and future authenticated endpoints need rate limits.
 - MP3 duration is estimated from bitrate when Xing/VBRI frame counts are unavailable.
 - There is no released-database upgrade fixture or backup/downgrade policy yet.
@@ -119,16 +124,20 @@ Android:
 - Build: PASS (`make android-build` / `./gradlew assembleDebug`)
 - Tests: PASS (`make android-test` / `./gradlew testDebugUnitTest`)
 - Static analysis: PASS (`make android-lint` / `./gradlew lintDebug`)
-- Physical-device smoke test: PASS (user-confirmed server connection, library display, and single-track playback). Android Auto Desktop Head Unit browse was attempted; its root-query ANR was diagnosed and fixed, but the fix still needs a fresh DHU browse/playback pass. Automated instrumentation, QR-camera behavior, credential restoration after restart, and broader media-control testing remain pending.
+- Physical-device smoke test: PASS (server connection, library display, single-track playback, complete Room snapshot activation, and cached process restart). The measured snapshot contains 176 artists, 253 albums, and 2,096 tracks; a matching-revision restart made only status and summary requests. Android Auto Desktop Head Unit browse was attempted; its root-query ANR was diagnosed and fixed, but the fix still needs a fresh DHU browse/playback pass. Automated instrumentation, QR-camera behavior, credential restoration after restart, and broader media-control testing remain pending.
 
 ## Recommended next task
 
-Install the new APK and server image, then remeasure cold/warm Home, lazy section loading, automatic pagination, album/artist reopening, first-cover latency, transferred artwork bytes, and memory against the physical 2,096-track library. Use those results to decide whether Phase 4 Room/Paging persistence is justified.
+Deploy the new server image, then measure Room-backed scrolling, album/artist reopening, first-cover latency before and after server prewarming, transferred artwork bytes, and memory against the physical 2,096-track library. Repeat snapshot and startup measurements against the generated 100,000-track fixture. Do not infer unmeasured performance improvements.
 
 ## Recent work log
 
 ### 2026-09-06
 
+- Implemented performance Phase 4: a credential-derived, token-free Room namespace; complete revision/count-verified snapshots downloaded in 200-item pages; staging generations with atomic activation; 50-item Room PagingSource pages; empty-cache-only Home bootstrap; and exported Room schema version 1. Search, artist detail, track detail, and Android Auto remain network-backed, while album detail uses an active snapshot when available.
+- Added bounded snapshot retry behavior: transport failures and HTTP 408, 429, 500, 502, 503, and 504 receive at most three attempts total; other failures do not retry. Disconnect clears the current namespace.
+- Validated Phase 4 on a physical device: a complete 176-artist, 253-album, 2,096-track snapshot activated in about 18 seconds, persisted across process death, and a 1.056-second cold Android launch reused it with only status and summary requests.
+- Added one cancellable/coalescing server artwork prewarmer after startup and successful scan work. Each deterministic pass covers at most 1,024 referenced covers at 256 and 512 px with a 10 ms pause after each variant.
 - Diagnosed album pagination and artwork together on a physical device: rapid artwork replacement produced enough HTTP/2 stream resets and retry amplification to push an album page into its 15-second timeout. Artwork is now isolated on at most two HTTP/1.1 connections with no application retry, viewport cancellations remain cheap, and client disposal no longer closes TLS sockets on the main thread. A 12-swipe device run loaded two album pages in 952 ms and 4.0 s without another pagination error. Uncached server derivatives now use faster approximate bilinear scaling.
 - Added credential-free debug request timings and identified server-side SQLite connection starvation: status completed in about one second while summary and album requests timed out after 15 seconds. The server now uses a bounded four-connection WAL pool with safety PRAGMAs applied per connection.
 - Implemented performance Phase 3: authenticated exact library summary counts, an opaque trigger-maintained revision, a bounded Home album shelf, lazy per-section Android loading, and revision-based section/detail-cache invalidation.
@@ -136,7 +145,7 @@ Install the new APK and server image, then remeasure cold/warm Home, lazy sectio
 ### 2026-09-05
 
 - Implemented performance Phases 1 and 2: 200-item artist/album and 100-item track pages, automatic near-end cursor loading with retry-only errors, atomic stale-safe merges, bounded detail caches, concurrent artist requests, fixed-size authenticated artwork derivatives, immutable caching, and explicit Coil cache limits.
-- Profiled a physical phone against a 2,096-track remote library and added `docs/PERFORMANCE.md`: phased measurement, automatic pagination, bounded detail caching, artwork derivatives, exact summary counts, and an optional later Room/Paging cache.
+- Profiled a physical phone against a 2,096-track remote library and added `docs/PERFORMANCE.md`: phased measurement, automatic pagination, bounded detail caching, artwork derivatives, exact summary counts, and the then-optional Room/Paging cache implemented on 2026-09-06.
 - Fixed playback after re-pairing to a different server origin: the old MediaController is released, the playback service is stopped on credential changes, and each new stream data source reloads current Keystore credentials. Added origin-versus-public byte-range diagnostics, visible buffering state, and persistent Media3 error codes without changing the proven server streaming path.
 - Documented the developer Docker workflow in `README.md`, including `make docker-save` → `dist/velin-server-local.tar.gz` for copying a linux/amd64 image to another PC.
 - Added a `scratch` server image, Compose bind-mounts for `/music` (read-only) and `/data`, and English operator documentation in `docs/DEPLOYMENT.md` (ADR-024). Startup now tightens an owned data directory to mode `0700`.

@@ -10,16 +10,21 @@ import (
 // work so very large libraries cannot accidentally multiply filesystem,
 // metadata-parser, artwork-cache, and SQLite pressure.
 type ScanService struct {
-	scanner *Scanner
-	roots   *Store
-	queries *ScanQueryRepository
-	mu      sync.Mutex
-	active  bool
+	scanner    *Scanner
+	roots      *Store
+	queries    *ScanQueryRepository
+	afterBatch func()
+	mu         sync.Mutex
+	active     bool
 }
 
 // NewScanService creates a background scan launcher.
-func NewScanService(scanner *Scanner, roots *Store, queries *ScanQueryRepository) *ScanService {
-	return &ScanService{scanner: scanner, roots: roots, queries: queries}
+func NewScanService(scanner *Scanner, roots *Store, queries *ScanQueryRepository, afterBatch ...func()) *ScanService {
+	service := &ScanService{scanner: scanner, roots: roots, queries: queries}
+	if len(afterBatch) > 0 {
+		service.afterBatch = afterBatch[0]
+	}
+	return service
 }
 
 // StartRoot begins a background scan for rootID. The running scan record is
@@ -42,8 +47,9 @@ func (s *ScanService) StartRoot(rootID string) error {
 		return err
 	}
 	go func() {
-		defer s.release()
-		_, _ = s.scanner.scanPreparedRoot(context.Background(), root, scan)
+		result, _ := s.scanner.scanPreparedRoot(context.Background(), root, scan)
+		s.release()
+		s.notifyAfterBatch([]ScanResult{result})
 	}()
 	return nil
 }
@@ -83,8 +89,9 @@ func (s *ScanService) startAll() error {
 	}
 
 	go func() {
-		defer s.release()
-		_, _ = s.scanner.scanRoots(context.Background(), roots, firstScan)
+		results, _ := s.scanner.scanRoots(context.Background(), roots, firstScan)
+		s.release()
+		s.notifyAfterBatch(results)
 	}()
 	return nil
 }
@@ -110,4 +117,16 @@ func (s *ScanService) release() {
 	s.mu.Lock()
 	s.active = false
 	s.mu.Unlock()
+}
+
+func (s *ScanService) notifyAfterBatch(results []ScanResult) {
+	if s.afterBatch == nil {
+		return
+	}
+	for _, result := range results {
+		if result.Completed || result.FilesIndexed > 0 {
+			s.afterBatch()
+			return
+		}
+	}
 }

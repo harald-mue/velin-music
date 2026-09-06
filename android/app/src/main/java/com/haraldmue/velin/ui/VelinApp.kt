@@ -45,6 +45,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -65,6 +66,9 @@ import com.haraldmue.velin.data.PairingClient
 import com.haraldmue.velin.data.SavedQueueStore
 import com.haraldmue.velin.data.Track
 import com.haraldmue.velin.data.VelinApiClient
+import com.haraldmue.velin.data.cache.CacheNamespace
+import com.haraldmue.velin.data.cache.LibraryCacheDatabase
+import com.haraldmue.velin.data.cache.LibraryCacheRepository
 import com.haraldmue.velin.playback.MiniPlayer
 import com.haraldmue.velin.playback.NetworkLossCanceller
 import com.haraldmue.velin.playback.isLikelyEmulator
@@ -77,7 +81,6 @@ import com.haraldmue.velin.ui.library.AlbumDetailScreen
 import com.haraldmue.velin.ui.library.ArtistDetailScreen
 import com.haraldmue.velin.ui.library.HomeScreen
 import com.haraldmue.velin.ui.library.LibraryScreen
-import com.haraldmue.velin.ui.library.LibrarySection
 import com.haraldmue.velin.ui.library.LibraryTab
 import com.haraldmue.velin.ui.library.LibraryUiState
 import com.haraldmue.velin.ui.library.LibraryViewModel
@@ -91,6 +94,7 @@ import com.haraldmue.velin.ui.pairing.PairingScreen
 import com.haraldmue.velin.ui.pairing.PairingUiState
 import com.haraldmue.velin.ui.pairing.PairingViewModel
 import com.haraldmue.velin.ui.pairing.PairingViewModelFactory
+import kotlinx.coroutines.launch
 
 private data class PlaybackRequest(val tracks: List<Track>, val startIndex: Int)
 
@@ -157,8 +161,13 @@ private fun ConnectedApp(
     var libraryTab by rememberSaveable { mutableStateOf(LibraryTab.Albums) }
     var showNowPlaying by rememberSaveable { mutableStateOf(false) }
     var showServerInfo by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
     val artworkClient = remember(credentials) { ArtworkClient(applicationContext, credentials) }
     val apiClient = remember(credentials) { VelinApiClient(credentials) }
+    val cacheDatabase = remember(applicationContext) { LibraryCacheDatabase.get(applicationContext) }
+    val cacheRepository = remember(credentials, apiClient, cacheDatabase) {
+        LibraryCacheRepository(cacheDatabase, apiClient, credentials)
+    }
     DisposableEffect(artworkClient) {
         onDispose(artworkClient::close)
     }
@@ -174,11 +183,11 @@ private fun ConnectedApp(
             onDispose(canceller::stop)
         }
     }
-    val libraryFactory = remember(apiClient) {
-        LibraryViewModelFactory(apiClient)
+    val libraryFactory = remember(apiClient, cacheRepository) {
+        LibraryViewModelFactory(apiClient, cacheRepository)
     }
     val libraryViewModel: LibraryViewModel = viewModel(
-        key = "library-${credentials.deviceId}",
+        key = "library-${CacheNamespace.from(credentials)}",
         factory = libraryFactory,
     )
     val libraryState by libraryViewModel.state.collectAsState()
@@ -191,7 +200,7 @@ private fun ConnectedApp(
         )
     }
     val playbackViewModel: PlaybackViewModel = viewModel(
-        key = "playback-${credentials.deviceId}",
+        key = "playback-${CacheNamespace.from(credentials)}",
         factory = playbackFactory,
     )
     val playbackState by playbackViewModel.state
@@ -229,9 +238,16 @@ private fun ConnectedApp(
         libraryViewModel.closeAlbum()
         libraryViewModel.closeArtist()
         libraryViewModel.closeTrack()
+        libraryViewModel.cancelForCredentialChange()
         playbackViewModel.stopAndClear()
         playbackViewModel.releaseForCredentialChange()
-        onDisconnect()
+        coroutineScope.launch {
+            try {
+                cacheRepository.clear()
+            } finally {
+                onDisconnect()
+            }
+        }
     }
 
     fun selectDestination(item: Destination) {
@@ -456,6 +472,9 @@ private fun ConnectedApp(
                     )
                     Destination.Library -> LibraryScreen(
                         state = libraryState,
+                        albums = libraryViewModel.albums,
+                        artists = libraryViewModel.artists,
+                        tracks = libraryViewModel.tracks,
                         artworkClient = artworkClient,
                         currentTrackId = playbackState.mediaId,
                         section = libraryTab,
@@ -465,8 +484,6 @@ private fun ConnectedApp(
                         onTrackClick = ::playQueue,
                         onTrackDetail = libraryViewModel::openTrack,
                         onSearch = libraryViewModel::search,
-                        onLoadSection = libraryViewModel::ensureSectionLoaded,
-                        onLoadMore = libraryViewModel::loadMore,
                         onLoadMoreSearch = libraryViewModel::loadMoreSearch,
                         onRetry = libraryViewModel::refresh,
                         onPairAgain = ::disconnect,
@@ -587,8 +604,8 @@ private fun ServerInfoDialog(
 
 internal fun serverReachability(state: LibraryUiState): ServerReachability = when {
     state.authenticationFailed -> ServerReachability.Unauthorized
-    state.loading && state.library == null -> ServerReachability.Loading
-    state.error != null && state.library == null -> ServerReachability.Unreachable
-    state.library != null -> ServerReachability.Connected
+    state.loading && state.status == null -> ServerReachability.Loading
+    state.statusError -> ServerReachability.Unreachable
+    state.status != null -> ServerReachability.Connected
     else -> ServerReachability.Unreachable
 }

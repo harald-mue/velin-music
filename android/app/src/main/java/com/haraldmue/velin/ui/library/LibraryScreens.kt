@@ -60,6 +60,11 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.paging.LoadState
+import androidx.paging.PagingData
+import androidx.paging.compose.LazyPagingItems
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemKey
 import com.haraldmue.velin.data.AccumulatedPage
 import com.haraldmue.velin.data.Album
 import com.haraldmue.velin.data.ArtworkClient
@@ -70,6 +75,7 @@ import com.haraldmue.velin.ui.layout.albumGridColumns
 import com.haraldmue.velin.ui.layout.isLandscape
 import com.haraldmue.velin.ui.layout.usesSplitDetail
 import com.haraldmue.velin.ui.layout.velinWidthClass
+import kotlinx.coroutines.flow.Flow
 
 enum class LibraryTab(val label: String) {
     Albums("Albums"),
@@ -89,7 +95,7 @@ fun HomeScreen(
 ) {
     when {
         state.loading && state.summary == null -> LoadingScreen()
-        state.error != null && state.summary == null -> ErrorScreen(
+        state.error != null && !state.hasActiveSnapshot -> ErrorScreen(
             message = state.error,
             actionLabel = if (state.authenticationFailed) "Pair again" else "Retry",
             onAction = if (state.authenticationFailed) onPairAgain else onRetry,
@@ -229,6 +235,9 @@ private fun AlbumGridItem(album: Album, artworkClient: ArtworkClient, onClick: (
 @Composable
 fun LibraryScreen(
     state: LibraryUiState,
+    albums: Flow<PagingData<Album>>,
+    artists: Flow<PagingData<Artist>>,
+    tracks: Flow<PagingData<Track>>,
     artworkClient: ArtworkClient,
     currentTrackId: String?,
     section: LibraryTab,
@@ -238,21 +247,21 @@ fun LibraryScreen(
     onTrackClick: (List<Track>, Int) -> Unit,
     onTrackDetail: (String) -> Unit,
     onSearch: (String) -> Unit,
-    onLoadSection: (LibrarySection) -> Unit,
-    onLoadMore: (LibrarySection) -> Unit,
     onLoadMoreSearch: () -> Unit,
     onRetry: () -> Unit,
     onPairAgain: () -> Unit,
 ) {
+    val albumItems = albums.collectAsLazyPagingItems()
+    val artistItems = artists.collectAsLazyPagingItems()
+    val trackItems = tracks.collectAsLazyPagingItems()
     when {
-        state.loading && state.library == null -> LoadingScreen()
-        state.error != null && state.library == null -> ErrorScreen(
+        state.loading && state.summary == null -> LoadingScreen()
+        state.error != null && !state.hasActiveSnapshot -> ErrorScreen(
             message = state.error,
             actionLabel = if (state.authenticationFailed) "Pair again" else "Retry",
             onAction = if (state.authenticationFailed) onPairAgain else onRetry,
         )
         else -> {
-            val library = state.library ?: return
             Column(modifier = Modifier.fillMaxSize()) {
                 Row(
                     modifier = Modifier
@@ -270,74 +279,36 @@ fun LibraryScreen(
                     }
                 }
                 when (section) {
-                    LibraryTab.Albums -> LibrarySectionContent(
-                        state = state,
-                        section = LibrarySection.Albums,
-                        page = library.albums,
+                    LibraryTab.Albums -> PagingCatalog(
+                        pagingItems = albumItems,
                         emptyMessage = "No indexed albums.",
-                        onLoad = onLoadSection,
-                        onPairAgain = onPairAgain,
-                    ) {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-                        ) {
-                            itemsIndexed(library.albums.items, key = { _, album -> album.id }) { index, album ->
-                                PaginationPrefetchEffect(index, library.albums, onLoadMore = {
-                                    onLoadMore(LibrarySection.Albums)
-                                })
-                                AlbumRow(album, artworkClient, onClick = { onAlbumClick(album) })
-                            }
-                            loadMoreItem(library.albums) { onLoadMore(LibrarySection.Albums) }
-                        }
+                        key = Album::id,
+                    ) { _, album ->
+                        AlbumRow(album, artworkClient, onClick = { onAlbumClick(album) })
                     }
-                    LibraryTab.Artists -> LibrarySectionContent(
-                        state = state,
-                        section = LibrarySection.Artists,
-                        page = library.artists,
+                    LibraryTab.Artists -> PagingCatalog(
+                        pagingItems = artistItems,
                         emptyMessage = "No indexed artists.",
-                        onLoad = onLoadSection,
-                        onPairAgain = onPairAgain,
-                    ) {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-                        ) {
-                            itemsIndexed(library.artists.items, key = { _, artist -> artist.id }) { index, artist ->
-                                PaginationPrefetchEffect(index, library.artists, onLoadMore = {
-                                    onLoadMore(LibrarySection.Artists)
-                                })
-                                ArtistRow(artist, onClick = { onArtistClick(artist) })
-                            }
-                            loadMoreItem(library.artists) { onLoadMore(LibrarySection.Artists) }
-                        }
+                        key = Artist::id,
+                    ) { _, artist ->
+                        ArtistRow(artist, onClick = { onArtistClick(artist) })
                     }
-                    LibraryTab.Tracks -> LibrarySectionContent(
-                        state = state,
-                        section = LibrarySection.Tracks,
-                        page = library.tracks,
+                    LibraryTab.Tracks -> PagingCatalog(
+                        pagingItems = trackItems,
                         emptyMessage = "No indexed tracks.",
-                        onLoad = onLoadSection,
-                        onPairAgain = onPairAgain,
-                    ) {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-                        ) {
-                            itemsIndexed(library.tracks.items, key = { _, track -> track.id }) { index, track ->
-                                PaginationPrefetchEffect(index, library.tracks, onLoadMore = {
-                                    onLoadMore(LibrarySection.Tracks)
-                                })
-                                TrackRow(
-                                    track = track,
-                                    artworkClient = artworkClient,
-                                    isCurrent = track.id == currentTrackId,
-                                    onClick = { onTrackClick(library.tracks.items, index) },
-                                    onDetailClick = { onTrackDetail(track.id) },
-                                )
-                            }
-                            loadMoreItem(library.tracks) { onLoadMore(LibrarySection.Tracks) }
-                        }
+                        key = Track::id,
+                    ) { _, track ->
+                        TrackRow(
+                            track = track,
+                            artworkClient = artworkClient,
+                            isCurrent = track.id == currentTrackId,
+                            onClick = {
+                                val queue = trackItems.itemSnapshotList.items
+                                val startIndex = queue.indexOfFirst { it.id == track.id }
+                                if (startIndex >= 0) onTrackClick(queue, startIndex)
+                            },
+                            onDetailClick = { onTrackDetail(track.id) },
+                        )
                     }
                     LibraryTab.Search -> SearchPane(
                         state = state,
@@ -356,31 +327,50 @@ fun LibraryScreen(
 }
 
 @Composable
-private fun <T> LibrarySectionContent(
-    state: LibraryUiState,
-    section: LibrarySection,
-    page: AccumulatedPage<T>,
+private fun <T : Any> PagingCatalog(
+    pagingItems: LazyPagingItems<T>,
     emptyMessage: String,
-    onLoad: (LibrarySection) -> Unit,
-    onPairAgain: () -> Unit,
-    content: @Composable () -> Unit,
+    key: (T) -> Any,
+    row: @Composable (Int, T) -> Unit,
 ) {
-    LaunchedEffect(section, state.summary?.revision) { onLoad(section) }
-    val error = state.sectionErrors[section]
+    val refresh = pagingItems.loadState.refresh
     when {
-        section in state.loadingSections -> LoadingScreen()
-        error != null -> ErrorScreen(
-            message = error,
-            actionLabel = if (state.authenticationFailed) "Pair again" else "Retry",
-            onAction = if (state.authenticationFailed) onPairAgain else ({ onLoad(section) }),
+        refresh is LoadState.Loading && pagingItems.itemCount == 0 -> LoadingScreen()
+        refresh is LoadState.Error && pagingItems.itemCount == 0 -> ErrorScreen(
+            message = refresh.error.message ?: "Could not load cached items.",
+            actionLabel = "Retry",
+            onAction = pagingItems::retry,
         )
-        section in state.loadedSections && page.items.isEmpty() -> Box(
+        refresh is LoadState.NotLoading && pagingItems.itemCount == 0 -> Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center,
         ) {
             Text(emptyMessage, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        section in state.loadedSections -> content()
+        else -> LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+        ) {
+            items(
+                count = pagingItems.itemCount,
+                key = pagingItems.itemKey(key),
+            ) { index ->
+                pagingItems[index]?.let { item -> row(index, item) }
+            }
+            when (val append = pagingItems.loadState.append) {
+                is LoadState.Loading -> item(key = "paging-loading") {
+                    CenteredProgress()
+                }
+                is LoadState.Error -> item(key = "paging-error") {
+                    ErrorContent(
+                        message = append.error.message ?: "Could not load more cached items.",
+                        actionLabel = "Retry",
+                        onAction = pagingItems::retry,
+                    )
+                }
+                is LoadState.NotLoading -> Unit
+            }
+        }
     }
 }
 

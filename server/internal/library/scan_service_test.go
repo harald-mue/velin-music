@@ -2,6 +2,7 @@ package library
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -65,4 +66,60 @@ func TestStartAllReturnsConflictWhenScanRunning(t *testing.T) {
 	if err := service.StartAll(); err != ErrScanAlreadyRunning {
 		t.Fatalf("StartAll() error = %v, want ErrScanAlreadyRunning", err)
 	}
+}
+
+func TestScanServiceTriggersAfterCompletedBatchWithoutScanLock(t *testing.T) {
+	dataDir := t.TempDir()
+	database, err := db.Open(context.Background(), filepath.Join(dataDir, "velin.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	rootPath := filepath.Join(dataDir, "music")
+	if err := os.Mkdir(rootPath, 0o700); err != nil {
+		t.Fatalf("create music root: %v", err)
+	}
+	roots := NewStore(database)
+	if _, err := roots.AddRoot(context.Background(), rootPath); err != nil {
+		t.Fatalf("add root: %v", err)
+	}
+
+	triggered := make(chan bool, 1)
+	var service *ScanService
+	service = NewScanService(
+		NewScanner(roots, NewTrackRepository(database)),
+		roots,
+		NewScanQueryRepository(database),
+		func() {
+			serviceUnlocked := serviceIsInactive(service)
+			triggered <- serviceUnlocked
+		},
+	)
+	if !service.TryStartAll() {
+		t.Fatal("TryStartAll() = false, want true")
+	}
+
+	select {
+	case unlocked := <-triggered:
+		if !unlocked {
+			t.Fatal("after-batch callback ran while scan remained active")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for after-batch callback")
+	}
+}
+
+func TestScanServiceTriggersAfterPartiallySuccessfulBatch(t *testing.T) {
+	triggered := false
+	service := &ScanService{afterBatch: func() { triggered = true }}
+	service.notifyAfterBatch([]ScanResult{{Completed: false, FilesIndexed: 1}})
+	if !triggered {
+		t.Fatal("partially successful batch did not trigger callback")
+	}
+}
+
+func serviceIsInactive(service *ScanService) bool {
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	return !service.active
 }

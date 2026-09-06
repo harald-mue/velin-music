@@ -26,6 +26,7 @@ private const val MaxAlbumQueueItems = 500
 private const val InitialArtistPageItems = 200
 private const val InitialAlbumPageItems = 200
 private const val InitialTrackPageItems = 100
+private val RetryableStatusCodes = setOf(408, 429, 500, 502, 503, 504)
 
 interface LibraryGateway {
     suspend fun status(): ServerStatus
@@ -217,28 +218,40 @@ class VelinApiClient(
                 if (call.isCanceled() && !isActive) {
                     throw CancellationException("Velin request cancelled")
                 }
-                throw ApiException("Cannot reach the Velin server.")
+                throw ApiException("Cannot reach the Velin server.", retryable = true)
             }
-            response.use {
-                val body = it.body ?: throw ApiException("The server returned an empty response.")
-                val source = body.source()
-                source.request(MaxApiResponseBytes + 1)
-                if (source.buffer.size > MaxApiResponseBytes) {
-                    throw ApiException("The server response is too large.")
-                }
-                val value = source.readUtf8()
-                when {
-                    it.code == 401 || it.code == 403 -> throw ApiException(
-                        "Device access was revoked. Pair this device again.",
-                        authenticationFailed = true,
-                    )
-                    !it.isSuccessful -> throw ApiException("The server request failed (HTTP ${it.code}).")
-                    else -> try {
-                        JSONObject(value)
-                    } catch (_: JSONException) {
-                        throw ApiException("The server returned invalid JSON.")
+            try {
+                response.use {
+                    val body = it.body ?: throw ApiException("The server returned an empty response.")
+                    val source = body.source()
+                    source.request(MaxApiResponseBytes + 1)
+                    if (source.buffer.size > MaxApiResponseBytes) {
+                        throw ApiException("The server response is too large.")
+                    }
+                    val value = source.readUtf8()
+                    when {
+                        it.code == 401 || it.code == 403 -> throw ApiException(
+                            "Device access was revoked. Pair this device again.",
+                            authenticationFailed = true,
+                        )
+                        !it.isSuccessful -> throw ApiException(
+                            "The server request failed (HTTP ${it.code}).",
+                            retryable = it.code in RetryableStatusCodes,
+                        )
+                        else -> try {
+                            JSONObject(value)
+                        } catch (_: JSONException) {
+                            throw ApiException("The server returned invalid JSON.")
+                        }
                     }
                 }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: IOException) {
+                if (call.isCanceled() && !isActive) {
+                    throw CancellationException("Velin request cancelled")
+                }
+                throw ApiException("Cannot reach the Velin server.", retryable = true)
             }
         }
 
@@ -369,6 +382,7 @@ private suspend fun Call.awaitCancellable(): Response =
 class ApiException(
     message: String,
     val authenticationFailed: Boolean = false,
+    val retryable: Boolean = false,
 ) : Exception(message) {
     val isNotFound: Boolean
         get() = message?.contains("HTTP 404") == true

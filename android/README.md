@@ -39,7 +39,17 @@ Plain HTTP is enabled for trusted-LAN deployments and produces an in-app warning
 
 ## Authenticated API
 
-After pairing, a dedicated OkHttp client adds the stored bearer token through an interceptor; no HTTP logging interceptor is installed. JSON responses are size-bounded, model strings and page lengths are validated, and `401`/`403` responses lead the user back toward pairing without exposing credentials. Home loads server status, exact summary counts, an opaque library revision, and only a bounded 16-album shelf. Artist, album, and track pages load independently when their Library tab is first opened; a changed revision invalidates detail/search caches and reloads previously requested sections. Search queries the protected FTS endpoint.
+After pairing, a dedicated OkHttp client adds the stored bearer token through an interceptor; no HTTP logging interceptor is installed. JSON responses are size-bounded, model strings and page lengths are validated, and `401`/`403` responses lead the user back toward pairing without exposing credentials. Search queries the protected FTS endpoint.
+
+## Room snapshot cache
+
+Public artist, album, and track metadata is cached in the app-private `library-cache.db`. The cache namespace is the SHA-256 digest of the normalized server URL, a NUL separator, and the device ID; the bearer token is not included. Disconnect removes the current namespace. Room schema version 1 is exported under `app/schemas/`.
+
+Refresh downloads complete collections in 200-item API pages into a staging generation. It reads the exact server summary before and after the download and activates the generation atomically only when the revision is unchanged and all downloaded entity counts match the first summary. A failed, cancelled, changed-revision, or count-mismatched refresh keeps the previous active snapshot.
+
+Library artist, album, and track lists read Room through Paging 3 with a page size of 50. Home reads the summary and 16-album shelf from the active snapshot, and album detail uses Room when the album is present in that snapshot. Only when no active snapshot exists does startup bootstrap a network summary and 16-album shelf while synchronization runs. Search, artist detail, track detail, and Android Auto remain network-backed.
+
+Snapshot requests make at most three attempts. Retries are limited to transport failures and HTTP 408, 429, 500, 502, 503, and 504; authentication, validation, and other HTTP failures are not retried.
 
 ## Playback foundation
 
@@ -70,6 +80,6 @@ Album rows now open a cover-backed detail screen that follows authenticated curs
 
 Now Playing and the Queue tab share Media3 state. The queue list highlights the current item, greys tracks that disappeared from the library after Load, removes entries, supports long-press drag reorder when shuffle is off, toggles shuffle, and cycles repeat through Off, All, and One. Clear empties the player. Save and Load use one device-private JSON file (not server playlists); Save is enabled only when the playable ID order changed, and a later Save drops unavailable IDs. Shuffle/repeat state also appears on Now Playing. Track detail exposes Play next and Add to queue actions that insert into the bounded Media3 queue.
 
-General-library lists and search use automatic near-end cursor pagination with an inline retry only after failures. Artist rows open a detail screen with play-all and add-to-queue; track rows expose an Info action for metadata and play. ExoPlayer uses extended buffering (2–5 minute window) with longer OkHttp read timeouts for self-hosted FLAC over LAN. Android Auto can browse Albums and Artists through the same playback service; Recently Played/Added are omitted because the server does not expose those collections. A user-confirmed physical-device smoke test covers server connection, library display, and single-track playback. Automated instrumentation, QR-camera behavior, credential restoration after restart, notification controls, Android Auto in-car browse/playback, and extended background playback still require device validation. Playback resumption after process death is not implemented.
+General-library lists use Room PagingSource data; network-backed search retains automatic near-end cursor pagination with an inline retry only after failures. Artist rows open a network-backed detail screen with play-all and add-to-queue; track rows expose a network-backed Info action for metadata and play. ExoPlayer uses extended buffering (2–5 minute window) with longer OkHttp read timeouts for self-hosted FLAC over LAN. Android Auto can browse Albums and Artists through the network-backed playback service; Recently Played/Added are omitted because the server does not expose those collections. A user-confirmed physical-device smoke test covers server connection, library display, and single-track playback. Automated instrumentation, QR-camera behavior, credential restoration after restart, notification controls, Android Auto in-car browse/playback, and extended background playback still require device validation. Playback resumption after process death is not implemented.
 
 Bearer authorization must be supplied through the Media3 data source and must never be placed in stream URLs or logs. Both FLAC and MP3 streams remain first-class inputs, and the client does not request transcoding.

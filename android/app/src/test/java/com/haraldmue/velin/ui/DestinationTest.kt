@@ -1,5 +1,7 @@
 package com.haraldmue.velin.ui
 
+import com.haraldmue.velin.data.ServerStatus
+import com.haraldmue.velin.ui.library.LibraryUiState
 import com.haraldmue.velin.ui.library.LibraryTab
 import com.haraldmue.velin.ui.layout.VelinWidthClass
 import com.haraldmue.velin.ui.layout.albumGridColumns
@@ -39,5 +41,23 @@ class DestinationTest {
         assertEquals(true, usesNavigationRail(VelinWidthClass.Expanded, landscape = false))
         assertEquals(false, usesSplitDetail(VelinWidthClass.Compact, landscape = true))
         assertEquals(true, usesSplitDetail(VelinWidthClass.Medium, landscape = true))
+    }
+
+    @Test
+    fun syncFailureDoesNotMarkReachableServerOffline() {
+        assertEquals(
+            ServerReachability.Connected,
+            serverReachability(
+                LibraryUiState(
+                    loading = false,
+                    status = ServerStatus("Velin", "ok", "test"),
+                    error = "Snapshot verification failed.",
+                ),
+            ),
+        )
+        assertEquals(
+            ServerReachability.Unreachable,
+            serverReachability(LibraryUiState(loading = false, statusError = true)),
+        )
     }
 }

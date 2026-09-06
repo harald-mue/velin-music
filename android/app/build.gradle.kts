@@ -1,5 +1,7 @@
 plugins {
     id("com.android.application")
+    id("androidx.room")
+    id("com.google.devtools.ksp")
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
@@ -40,6 +42,14 @@ android {
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
+
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
+}
+
+room {
+    schemaDirectory("$projectDir/schemas")
 }
 
 dependencies {
@@ -57,6 +67,11 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("androidx.paging:paging-runtime-ktx:3.3.6")
+    implementation("androidx.paging:paging-compose:3.3.6")
+    implementation("androidx.room:room-ktx:2.8.4")
+    implementation("androidx.room:room-paging:2.8.4")
+    ksp("androidx.room:room-compiler:2.8.4")
     implementation("com.squareup.okhttp3:okhttp:5.5.0")
     implementation("androidx.camera:camera-camera2:1.6.2")
     implementation("androidx.camera:camera-lifecycle:1.6.2")
@@ -69,6 +84,7 @@ dependencies {
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.4.0")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("androidx.room:room-testing:2.8.4")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
     testImplementation("org.json:json:20250517")
     testImplementation("com.squareup.okhttp3:mockwebserver:5.5.0")

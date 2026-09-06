@@ -3,42 +3,40 @@ package com.haraldmue.velin.ui.library
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
 import com.haraldmue.velin.data.AccumulatedPage
 import com.haraldmue.velin.data.Album
 import com.haraldmue.velin.data.ApiException
 import com.haraldmue.velin.data.Artist
 import com.haraldmue.velin.data.LibraryGateway
-import com.haraldmue.velin.data.LibrarySnapshot
 import com.haraldmue.velin.data.LibrarySummary
 import com.haraldmue.velin.data.ServerStatus
 import com.haraldmue.velin.data.Track
 import com.haraldmue.velin.data.TrackDetail
+import com.haraldmue.velin.data.cache.LibraryCacheRepository
+import com.haraldmue.velin.data.cache.SnapshotSyncResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-
-enum class LibrarySection {
-    Albums,
-    Artists,
-    Tracks,
-}
 
 data class LibraryUiState(
     val loading: Boolean = true,
     val status: ServerStatus? = null,
+    val statusError: Boolean = false,
     val summary: LibrarySummary? = null,
+    val hasActiveSnapshot: Boolean = false,
     val homeAlbums: List<Album> = emptyList(),
-    val library: LibrarySnapshot? = null,
-    val loadedSections: Set<LibrarySection> = emptySet(),
-    val loadingSections: Set<LibrarySection> = emptySet(),
-    val sectionErrors: Map<LibrarySection, String> = emptyMap(),
     val error: String? = null,
     val authenticationFailed: Boolean = false,
     val searchQuery: String = "",
@@ -62,13 +60,17 @@ data class LibraryUiState(
 
 class LibraryViewModel(
     private val gateway: LibraryGateway,
+    private val repository: LibraryCacheRepository,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(LibraryUiState())
     val state: StateFlow<LibraryUiState> = mutableState.asStateFlow()
+    val albums: Flow<PagingData<Album>> = repository.albums.cachedIn(viewModelScope)
+    val artists: Flow<PagingData<Artist>> = repository.artists.cachedIn(viewModelScope)
+    val tracks: Flow<PagingData<Track>> = repository.tracks.cachedIn(viewModelScope)
+
     private var searchJob: Job? = null
     private var refreshJob: Job? = null
     private var refreshGeneration = 0
-    private val sectionJobs = mutableMapOf<LibrarySection, Job>()
     private var albumJob: Job? = null
     private var artistJob: Job? = null
     private var trackJob: Job? = null
@@ -80,240 +82,155 @@ class LibraryViewModel(
     }
 
     init {
-        refresh()
+        viewModelScope.launch {
+            repository.activeSnapshot.collectLatest { snapshot ->
+                mutableState.update {
+                    it.copy(
+                        summary = snapshot?.summary,
+                        hasActiveSnapshot = snapshot != null,
+                        loading = it.loading && snapshot == null,
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
+            repository.homeAlbums(HomeAlbumItems).collectLatest { albums ->
+                mutableState.update { it.copy(homeAlbums = albums) }
+            }
+        }
+        viewModelScope.launch {
+            val initialSnapshot = repository.activeSnapshot.first()
+            if (initialSnapshot != null) {
+                mutableState.update {
+                    it.copy(
+                        summary = initialSnapshot.summary,
+                        hasActiveSnapshot = true,
+                        loading = false,
+                    )
+                }
+            }
+            refreshInternal(bootstrapWhenEmpty = initialSnapshot == null)
+        }
     }
 
     fun refresh() {
+        refreshInternal(bootstrapWhenEmpty = mutableState.value.summary == null)
+    }
+
+    private fun refreshInternal(bootstrapWhenEmpty: Boolean) {
         refreshJob?.cancel()
-        val interruptedSections = mutableState.value.loadingSections
-        val previouslyRequestedSections = mutableState.value.loadedSections + interruptedSections
-        sectionJobs.values.forEach(Job::cancel)
-        sectionJobs.clear()
         val generation = ++refreshGeneration
         refreshJob = viewModelScope.launch {
+            val previousRevision = mutableState.value.summary?.revision
             mutableState.update {
                 it.copy(
                     loading = true,
-                    library = it.library?.withoutLoadingMarkers(),
-                    loadingSections = emptySet(),
+                    status = null,
+                    statusError = false,
                     error = null,
                     authenticationFailed = false,
                 )
             }
             try {
-                val result = coroutineScope {
+                val (statusResult, syncResult) = supervisorScope {
                     val statusRequest = async { gateway.status() }
-                    val summaryRequest = async { gateway.summary() }
-                    val albumsRequest = async { gateway.loadAlbumsPage(limit = HomeAlbumItems) }
-                    RefreshResult(statusRequest.await(), summaryRequest.await(), albumsRequest.await().items)
+                    val bootstrapRequest = if (bootstrapWhenEmpty) {
+                        launch {
+                            runCatching {
+                                coroutineScope {
+                                    val summaryRequest = async { gateway.summary() }
+                                    val albumsRequest = async { gateway.loadAlbumsPage(limit = HomeAlbumItems) }
+                                    summaryRequest.await() to albumsRequest.await().items
+                                }
+                            }.onSuccess { (summary, albums) ->
+                                if (generation == refreshGeneration) {
+                                    mutableState.update {
+                                        it.copy(
+                                            summary = summary,
+                                            homeAlbums = albums,
+                                            loading = false,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        null
+                    }
+                    val status = runCatching { statusRequest.await() }
+                    status.onSuccess { value ->
+                        if (generation == refreshGeneration) {
+                            mutableState.update { it.copy(status = value, statusError = false) }
+                        }
+                    }.onFailure {
+                        if (generation == refreshGeneration) {
+                            mutableState.update { it.copy(statusError = true) }
+                        }
+                    }
+                    bootstrapRequest?.join()
+                    status to repository.sync()
                 }
-                ensureActive()
-                if (generation != refreshGeneration) return@launch
-                val revisionChanged = mutableState.value.summary?.revision != result.summary.revision
-                if (revisionChanged) {
-                    searchJob?.cancel()
-                    sectionJobs.values.forEach(Job::cancel)
-                    sectionJobs.clear()
-                    clearDetailCaches()
+                when (syncResult) {
+                    is SnapshotSyncResult.Activated -> {
+                        if (previousRevision != syncResult.snapshot.summary.revision) {
+                            searchJob?.cancel()
+                            mutableState.update {
+                                it.copy(
+                                    searchQuery = "",
+                                    searchResults = AccumulatedPage(),
+                                    searchError = null,
+                                )
+                            }
+                        }
+                        clearDetailCaches()
+                        mutableState.update {
+                            it.copy(
+                                summary = syncResult.snapshot.summary,
+                                hasActiveSnapshot = true,
+                                error = statusResult.exceptionOrNull()?.displayMessage(),
+                            )
+                        }
+                    }
+                    is SnapshotSyncResult.KeptPrevious -> mutableState.update {
+                        it.copy(error = syncResult.reason)
+                    }
+                    is SnapshotSyncResult.Failed -> mutableState.update {
+                        val apiError = syncResult.cause as? ApiException
+                        it.copy(
+                            error = syncResult.cause.displayMessage(),
+                            authenticationFailed = apiError?.authenticationFailed == true,
+                        )
+                    }
                 }
-                mutableState.update { state ->
-                    state.copy(
-                        loading = false,
-                        status = result.status,
-                        summary = result.summary,
-                        homeAlbums = result.homeAlbums,
-                        library = if (revisionChanged) LibrarySnapshot() else state.library ?: LibrarySnapshot(),
-                        loadedSections = if (revisionChanged) emptySet() else state.loadedSections,
-                        loadingSections = if (revisionChanged) emptySet() else state.loadingSections,
-                        sectionErrors = if (revisionChanged) emptyMap() else state.sectionErrors,
-                        searchQuery = if (revisionChanged) "" else state.searchQuery,
-                        searchResults = if (revisionChanged) AccumulatedPage() else state.searchResults,
-                        searchError = if (revisionChanged) null else state.searchError,
-                    )
+                statusResult.exceptionOrNull()?.let { statusError ->
+                    val apiError = statusError as? ApiException
+                    if (apiError?.authenticationFailed == true) {
+                        mutableState.update {
+                            it.copy(authenticationFailed = true)
+                        }
+                    }
                 }
-                val sectionsToReload = if (revisionChanged) previouslyRequestedSections else interruptedSections
-                sectionsToReload.forEach(::ensureSectionLoaded)
             } catch (error: CancellationException) {
                 throw error
-            } catch (error: ApiException) {
-                if (generation != refreshGeneration) return@launch
-                mutableState.update {
-                    it.copy(
-                        loading = false,
-                        error = error.message ?: "Could not load the library.",
-                        authenticationFailed = error.authenticationFailed,
-                    )
-                }
-            } catch (_: Exception) {
-                if (generation != refreshGeneration) return@launch
-                mutableState.update {
-                    it.copy(
-                        loading = false,
-                        error = "Could not load the library.",
-                    )
+            } finally {
+                if (generation == refreshGeneration) {
+                    mutableState.update { it.copy(loading = false) }
                 }
             }
         }
     }
 
-    fun ensureSectionLoaded(section: LibrarySection) {
-        val state = mutableState.value
-        if (state.library == null || section in state.loadedSections || section in state.loadingSections) return
-        when (section) {
-            LibrarySection.Artists -> loadInitialSection(
-                section = section,
-                fetch = { gateway.loadArtistsPage(limit = 200) },
-                replace = { library, page -> library.copy(artists = page) },
-            )
-            LibrarySection.Albums -> loadInitialSection(
-                section = section,
-                fetch = { gateway.loadAlbumsPage(limit = 200) },
-                replace = { library, page -> library.copy(albums = page) },
-            )
-            LibrarySection.Tracks -> loadInitialSection(
-                section = section,
-                fetch = { gateway.loadTracksPage(limit = 100) },
-                replace = { library, page -> library.copy(tracks = page) },
-            )
-        }
+    fun cancelForCredentialChange() {
+        refreshJob?.cancel()
+        searchJob?.cancel()
+        albumJob?.cancel()
+        artistJob?.cancel()
+        trackJob?.cancel()
     }
 
-    private fun <T> loadInitialSection(
-        section: LibrarySection,
-        fetch: suspend () -> com.haraldmue.velin.data.Page<T>,
-        replace: (LibrarySnapshot, AccumulatedPage<T>) -> LibrarySnapshot,
-    ) {
-        val generation = refreshGeneration
-        sectionJobs[section]?.cancel()
-        mutableState.update {
-            it.copy(
-                loadingSections = it.loadingSections + section,
-                sectionErrors = it.sectionErrors - section,
-            )
-        }
-        sectionJobs[section] = viewModelScope.launch {
-            try {
-                val page = fetch()
-                if (generation != refreshGeneration) return@launch
-                mutableState.update { current ->
-                    val library = current.library ?: return@update current
-                    current.copy(
-                        library = replace(library, AccumulatedPage.from(page)),
-                        loadedSections = current.loadedSections + section,
-                        loadingSections = current.loadingSections - section,
-                        sectionErrors = current.sectionErrors - section,
-                    )
-                }
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: ApiException) {
-                if (generation != refreshGeneration) return@launch
-                finishSectionError(section, error.message ?: "Could not load this section.", error.authenticationFailed)
-            } catch (_: Exception) {
-                if (generation != refreshGeneration) return@launch
-                finishSectionError(section, "Could not load this section.", false)
-            }
-        }
-    }
-
-    private fun finishSectionError(section: LibrarySection, message: String, authenticationFailed: Boolean) {
-        mutableState.update {
-            it.copy(
-                loadingSections = it.loadingSections - section,
-                sectionErrors = it.sectionErrors + (section to message),
-                authenticationFailed = authenticationFailed,
-            )
-        }
-    }
-
-    fun loadMore(section: LibrarySection) {
-        when (section) {
-            LibrarySection.Artists -> loadMorePage(
-                select = LibrarySnapshot::artists,
-                replace = { library, page -> library.copy(artists = page) },
-                fetch = { cursor -> gateway.loadArtistsPage(cursor = cursor, limit = 200) },
-            )
-            LibrarySection.Albums -> loadMorePage(
-                select = LibrarySnapshot::albums,
-                replace = { library, page -> library.copy(albums = page) },
-                fetch = { cursor -> gateway.loadAlbumsPage(cursor = cursor, limit = 200) },
-            )
-            LibrarySection.Tracks -> loadMorePage(
-                select = LibrarySnapshot::tracks,
-                replace = { library, page -> library.copy(tracks = page) },
-                fetch = { cursor -> gateway.loadTracksPage(cursor = cursor, limit = 100) },
-            )
-        }
-    }
-
-    private fun <T> loadMorePage(
-        select: (LibrarySnapshot) -> AccumulatedPage<T>,
-        replace: (LibrarySnapshot, AccumulatedPage<T>) -> LibrarySnapshot,
-        fetch: suspend (String) -> com.haraldmue.velin.data.Page<T>,
-    ) {
-        val library = mutableState.value.library ?: return
-        val page = select(library)
-        if (!page.hasMore || page.loadingMore) return
-        val cursor = page.nextCursor ?: return
-        val generation = refreshGeneration
-        mutableState.update { state ->
-            val currentLibrary = state.library ?: return@update state
-            val currentPage = select(currentLibrary)
-            if (currentPage.nextCursor != cursor || currentPage.loadingMore) return@update state
-            state.copy(
-                library = replace(
-                    currentLibrary,
-                    currentPage.copy(loadingMore = true, loadMoreError = null),
-                ),
-            )
-        }
-        viewModelScope.launch {
-            try {
-                val nextPage = fetch(cursor)
-                if (generation != refreshGeneration) return@launch
-                mutableState.update { state ->
-                    val currentLibrary = state.library ?: return@update state
-                    val currentPage = select(currentLibrary)
-                    if (currentPage.nextCursor != cursor || !currentPage.loadingMore) return@update state
-                    state.copy(library = replace(currentLibrary, currentPage.append(nextPage)))
-                }
-            } catch (error: ApiException) {
-                if (generation != refreshGeneration) return@launch
-                mutableState.update { state ->
-                    val currentLibrary = state.library ?: return@update state
-                    val currentPage = select(currentLibrary)
-                    if (currentPage.nextCursor != cursor) return@update state
-                    state.copy(
-                        library = replace(
-                            currentLibrary,
-                            currentPage.copy(
-                                loadingMore = false,
-                                loadMoreError = error.message ?: "Could not load more items.",
-                            ),
-                        ),
-                        authenticationFailed = error.authenticationFailed,
-                    )
-                }
-            } catch (error: CancellationException) {
-                throw error
-            } catch (_: Exception) {
-                if (generation != refreshGeneration) return@launch
-                mutableState.update { state ->
-                    val currentLibrary = state.library ?: return@update state
-                    val currentPage = select(currentLibrary)
-                    if (currentPage.nextCursor != cursor) return@update state
-                    state.copy(
-                        library = replace(
-                            currentLibrary,
-                            currentPage.copy(
-                                loadingMore = false,
-                                loadMoreError = "Could not load more items.",
-                            ),
-                        ),
-                    )
-                }
-            }
-        }
+    private fun Throwable.displayMessage(): String = when (this) {
+        is ApiException -> message ?: "Could not refresh the library."
+        else -> "Could not refresh the library."
     }
 
     fun openAlbum(album: Album) {
@@ -330,7 +247,18 @@ class LibraryViewModel(
         if (cachedTracks != null) return
         albumJob = viewModelScope.launch {
             try {
-                val tracks = gateway.loadAlbumTracks(album.id)
+                val roomTracks = try {
+                    if (repository.album(album.id) != null) {
+                        repository.albumTracks(album.id).first()
+                    } else {
+                        null
+                    }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    null
+                }
+                val tracks = roomTracks ?: gateway.loadAlbumTracks(album.id)
                 putTrackList(albumTrackCache, album.id, tracks, MaxCachedAlbums)
                 mutableState.update {
                     if (it.selectedAlbum?.id != album.id) it else it.copy(
@@ -602,12 +530,6 @@ class LibraryViewModel(
         }
     }
 
-    private fun LibrarySnapshot.withoutLoadingMarkers(): LibrarySnapshot = copy(
-        artists = artists.copy(loadingMore = false),
-        albums = albums.copy(loadingMore = false),
-        tracks = tracks.copy(loadingMore = false),
-    )
-
     private fun clearDetailCaches() {
         albumTrackCache.clear()
         artistCache.clear()
@@ -646,12 +568,6 @@ class LibraryViewModel(
         val tracks: List<Track>,
     )
 
-    private data class RefreshResult(
-        val status: ServerStatus,
-        val summary: LibrarySummary,
-        val homeAlbums: List<Album>,
-    )
-
     private companion object {
         const val HomeAlbumItems = 16
         const val MaxCachedAlbums = 32
@@ -663,10 +579,11 @@ class LibraryViewModel(
 
 class LibraryViewModelFactory(
     private val gateway: LibraryGateway,
+    private val repository: LibraryCacheRepository,
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         require(modelClass.isAssignableFrom(LibraryViewModel::class.java))
-        return LibraryViewModel(gateway) as T
+        return LibraryViewModel(gateway, repository) as T
     }
 }

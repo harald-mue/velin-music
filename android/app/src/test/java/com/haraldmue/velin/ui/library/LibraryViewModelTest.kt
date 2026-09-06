@@ -1,74 +1,99 @@
 package com.haraldmue.velin.ui.library
 
+import android.os.Looper
+import androidx.room.Room
 import com.haraldmue.velin.data.Album
 import com.haraldmue.velin.data.Artist
+import com.haraldmue.velin.data.DeviceCredentials
 import com.haraldmue.velin.data.LibraryGateway
-import com.haraldmue.velin.data.LibrarySnapshot
 import com.haraldmue.velin.data.LibrarySummary
 import com.haraldmue.velin.data.Page
 import com.haraldmue.velin.data.ServerStatus
 import com.haraldmue.velin.data.Track
 import com.haraldmue.velin.data.TrackDetail
-import com.haraldmue.velin.data.AccumulatedPage
+import com.haraldmue.velin.data.cache.LibraryCacheDatabase
+import com.haraldmue.velin.data.cache.LibraryCacheRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
+import org.robolectric.annotation.Config
 
 @OptIn(ExperimentalCoroutinesApi::class)
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35])
 class LibraryViewModelTest {
+    private lateinit var database: LibraryCacheDatabase
+
+    @Before
+    fun setUp() {
+        database = Room.inMemoryDatabaseBuilder(
+            RuntimeEnvironment.getApplication(),
+            LibraryCacheDatabase::class.java,
+        )
+            .allowMainThreadQueries()
+            .setQueryExecutor { it.run() }
+            .setTransactionExecutor { it.run() }
+            .build()
+    }
+
+    @After
+    fun tearDown() {
+        database.close()
+    }
+
     @Test
-    fun startupLoadsOnlySummaryAndHomeAlbumsUntilASectionIsOpened() = runTest {
+    fun startupSyncsRoomSnapshotAndHomeAlbums() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         Dispatchers.setMain(dispatcher)
         try {
             val gateway = ControllableLibraryGateway()
-            val viewModel = LibraryViewModel(gateway)
-            advanceUntilIdle()
+            val viewModel = viewModel(gateway)
+            settle()
 
-            assertEquals(16, gateway.albumPageLimits.single())
-            assertEquals(0, gateway.artistPageRequests)
-            assertEquals(0, gateway.trackPageRequests)
-            assertEquals(1, viewModel.state.value.summary?.trackCount)
-
-            viewModel.ensureSectionLoaded(LibrarySection.Artists)
-            advanceUntilIdle()
+            assertEquals(listOf(16, 200), gateway.albumPageLimits)
             assertEquals(1, gateway.artistPageRequests)
-            assertEquals(listOf(200), gateway.artistPageLimits)
-            assertTrue(LibrarySection.Artists in viewModel.state.value.loadedSections)
+            assertEquals(1, gateway.trackPageRequests)
+            assertEquals(1, viewModel.state.value.summary?.trackCount)
+            assertEquals("first", viewModel.state.value.homeAlbums.single().title)
         } finally {
             Dispatchers.resetMain()
         }
     }
 
     @Test
-    fun changedRevisionInvalidatesAndReloadsPreviouslyOpenedSections() = runTest {
+    fun changedRevisionActivatesNewRoomSnapshot() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         Dispatchers.setMain(dispatcher)
         try {
             val gateway = ControllableLibraryGateway()
-            val viewModel = LibraryViewModel(gateway)
-            advanceUntilIdle()
-            viewModel.ensureSectionLoaded(LibrarySection.Artists)
-            advanceUntilIdle()
+            val viewModel = viewModel(gateway)
+            settle()
             assertEquals(1, gateway.artistPageRequests)
 
             gateway.revision = "revision-2"
+            gateway.albumTitle = "second"
             viewModel.refresh()
-            advanceUntilIdle()
+            settle()
 
             assertEquals("revision-2", viewModel.state.value.summary?.revision)
             assertEquals(2, gateway.artistPageRequests)
-            assertTrue(LibrarySection.Artists in viewModel.state.value.loadedSections)
-            assertEquals(0, gateway.trackPageRequests)
+            assertEquals("second", viewModel.state.value.homeAlbums.single().title)
         } finally {
             Dispatchers.resetMain()
         }
@@ -80,21 +105,21 @@ class LibraryViewModelTest {
         Dispatchers.setMain(dispatcher)
         try {
             val gateway = ControllableLibraryGateway()
-            val viewModel = LibraryViewModel(gateway)
-            advanceUntilIdle()
+            val viewModel = viewModel(gateway)
+            settle()
             val album = snapshot("Album").albums.items.single()
 
             viewModel.openAlbum(album)
-            advanceUntilIdle()
+            settle()
             viewModel.closeAlbum()
             viewModel.openAlbum(album)
-            advanceUntilIdle()
-            assertEquals(1, gateway.albumTrackRequests)
+            settle()
+            assertEquals(0, gateway.albumTrackRequests)
 
             gateway.artistDelayMs = 1_000
             val startedAt = testScheduler.currentTime
             viewModel.openArtist(Artist("artist-1", "Artist", 1, 1))
-            advanceUntilIdle()
+            settle()
             assertEquals(1_000, testScheduler.currentTime - startedAt)
             assertTrue(viewModel.state.value.artistTracks.isNotEmpty())
             assertEquals(1, gateway.artistDetailRequests)
@@ -110,24 +135,89 @@ class LibraryViewModelTest {
         Dispatchers.setMain(dispatcher)
         try {
             val gateway = ControllableLibraryGateway()
-            val viewModel = LibraryViewModel(gateway)
-            advanceUntilIdle()
+            val viewModel = viewModel(gateway)
+            settle()
             assertEquals("first", viewModel.state.value.homeAlbums.first().title)
             assertFalse(viewModel.state.value.loading)
 
             gateway.albumTitle = "stale"
+            gateway.revision = "revision-2"
             gateway.loadDelayMs = 1_000
             viewModel.refresh()
             gateway.albumTitle = "fresh"
+            gateway.revision = "revision-3"
             gateway.loadDelayMs = 0
             viewModel.refresh()
-            advanceUntilIdle()
+            settle()
 
             assertEquals("fresh", viewModel.state.value.homeAlbums.first().title)
             assertFalse(viewModel.state.value.loading)
         } finally {
             Dispatchers.resetMain()
         }
+    }
+
+    @Test
+    fun failedRefreshKeepsPreviouslyActivatedSnapshot() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        try {
+            val gateway = ControllableLibraryGateway()
+            val repository = repository(gateway)
+            repository.sync()
+            gateway.albumTitle = "new"
+            gateway.revision = "revision-2"
+            gateway.failTracks = true
+
+            val viewModel = LibraryViewModel(gateway, repository)
+            settle()
+
+            assertEquals("revision-1", viewModel.state.value.summary?.revision)
+            assertEquals("first", viewModel.state.value.homeAlbums.single().title)
+            assertEquals("Could not refresh the library.", viewModel.state.value.error)
+            assertFalse(viewModel.state.value.loading)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun failedInitialSyncDoesNotActivateBootstrapData() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        try {
+            val gateway = ControllableLibraryGateway().apply { failTracks = true }
+            val viewModel = viewModel(gateway)
+            settle()
+
+            assertFalse(viewModel.state.value.hasActiveSnapshot)
+            assertEquals("Could not refresh the library.", viewModel.state.value.error)
+            assertFalse(viewModel.state.value.loading)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    private fun viewModel(gateway: ControllableLibraryGateway): LibraryViewModel {
+        return LibraryViewModel(gateway, repository(gateway))
+    }
+
+    private fun repository(gateway: ControllableLibraryGateway): LibraryCacheRepository {
+        val credentials = DeviceCredentials(
+            serverUrl = "https://example.test",
+            deviceId = "device",
+            token = "token",
+            serverName = "Test",
+            serverVersion = "1",
+        )
+        return LibraryCacheRepository(database, gateway, credentials)
+    }
+
+    private fun TestScope.settle() {
+        shadowOf(Looper.getMainLooper()).idle()
+        advanceUntilIdle()
+        shadowOf(Looper.getMainLooper()).idle()
+        advanceUntilIdle()
     }
 }
 
@@ -136,6 +226,7 @@ private class ControllableLibraryGateway : LibraryGateway {
     var revision: String = "revision-1"
     var loadDelayMs: Long = 0
     var artistDelayMs: Long = 0
+    var failTracks: Boolean = false
     var albumTrackRequests: Int = 0
     var artistDetailRequests: Int = 0
     var artistTrackRequests: Int = 0
@@ -155,7 +246,7 @@ private class ControllableLibraryGateway : LibraryGateway {
     override suspend fun loadArtistsPage(cursor: String?, limit: Int): Page<Artist> {
         artistPageRequests++
         artistPageLimits += limit
-        return Page(emptyList(), null, false)
+        return Page(listOf(Artist("artist-1", "Artist", 1, 1)), null, false)
     }
 
     override suspend fun loadAlbumsPage(cursor: String?, limit: Int): Page<Album> {
@@ -171,7 +262,8 @@ private class ControllableLibraryGateway : LibraryGateway {
         limit: Int,
     ): Page<Track> {
         trackPageRequests++
-        return Page(emptyList(), null, false)
+        if (failTracks) error("failed")
+        return Page(listOf(testTrack("artist-1")), null, false)
     }
 
     override suspend fun loadArtist(artistId: String): Artist {
@@ -229,12 +321,12 @@ private fun testTrack(artistId: String) = Track(
     albumTitle = "Album",
     durationMs = 1_000,
     artistId = artistId,
+    albumId = "album-1",
 )
 
-private fun snapshot(title: String) = LibrarySnapshot(
-    artists = AccumulatedPage(),
-    albums = AccumulatedPage(
-        items = listOf(
+private fun snapshot(title: String) = object {
+    val albums = object {
+        val items = listOf(
             Album(
                 id = "album-1",
                 title = title,
@@ -243,7 +335,6 @@ private fun snapshot(title: String) = LibrarySnapshot(
                 coverId = null,
                 trackCount = 1,
             ),
-        ),
-    ),
-    tracks = AccumulatedPage(),
-)
+        )
+    }
+}

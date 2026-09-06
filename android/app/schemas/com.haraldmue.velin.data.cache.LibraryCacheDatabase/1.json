@@ -1,0 +1,338 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "8751373de453d1772b138195e4ff695b",
+    "entities": [
+      {
+        "tableName": "cache_state",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`namespace` TEXT NOT NULL, `active_generation` TEXT, `active_revision` TEXT, `artist_count` INTEGER NOT NULL, `album_count` INTEGER NOT NULL, `track_count` INTEGER NOT NULL, `activated_at_ms` INTEGER, PRIMARY KEY(`namespace`))",
+        "fields": [
+          {
+            "fieldPath": "namespace",
+            "columnName": "namespace",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "activeGeneration",
+            "columnName": "active_generation",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "activeRevision",
+            "columnName": "active_revision",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "artistCount",
+            "columnName": "artist_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "albumCount",
+            "columnName": "album_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "trackCount",
+            "columnName": "track_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "activatedAtMs",
+            "columnName": "activated_at_ms",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "namespace"
+          ]
+        }
+      },
+      {
+        "tableName": "cached_artists",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`namespace` TEXT NOT NULL, `generation` TEXT NOT NULL, `id` TEXT NOT NULL, `server_order` INTEGER NOT NULL, `name` TEXT NOT NULL, `album_count` INTEGER NOT NULL, `track_count` INTEGER NOT NULL, PRIMARY KEY(`namespace`, `generation`, `id`))",
+        "fields": [
+          {
+            "fieldPath": "namespace",
+            "columnName": "namespace",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "generation",
+            "columnName": "generation",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "serverOrder",
+            "columnName": "server_order",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "albumCount",
+            "columnName": "album_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "trackCount",
+            "columnName": "track_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "namespace",
+            "generation",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_cached_artists_namespace_generation_server_order",
+            "unique": true,
+            "columnNames": [
+              "namespace",
+              "generation",
+              "server_order"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_cached_artists_namespace_generation_server_order` ON `${TABLE_NAME}` (`namespace`, `generation`, `server_order`)"
+          }
+        ]
+      },
+      {
+        "tableName": "cached_albums",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`namespace` TEXT NOT NULL, `generation` TEXT NOT NULL, `id` TEXT NOT NULL, `server_order` INTEGER NOT NULL, `title` TEXT NOT NULL, `artist_name` TEXT, `year` INTEGER, `cover_id` TEXT, `track_count` INTEGER NOT NULL, PRIMARY KEY(`namespace`, `generation`, `id`))",
+        "fields": [
+          {
+            "fieldPath": "namespace",
+            "columnName": "namespace",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "generation",
+            "columnName": "generation",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "serverOrder",
+            "columnName": "server_order",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "artistName",
+            "columnName": "artist_name",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "year",
+            "columnName": "year",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "coverId",
+            "columnName": "cover_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "trackCount",
+            "columnName": "track_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "namespace",
+            "generation",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_cached_albums_namespace_generation_server_order",
+            "unique": true,
+            "columnNames": [
+              "namespace",
+              "generation",
+              "server_order"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_cached_albums_namespace_generation_server_order` ON `${TABLE_NAME}` (`namespace`, `generation`, `server_order`)"
+          }
+        ]
+      },
+      {
+        "tableName": "cached_tracks",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`namespace` TEXT NOT NULL, `generation` TEXT NOT NULL, `id` TEXT NOT NULL, `server_order` INTEGER NOT NULL, `title` TEXT NOT NULL, `format` TEXT NOT NULL, `artist_name` TEXT, `album_title` TEXT, `duration_ms` INTEGER, `track_number` INTEGER, `disc_number` INTEGER, `artist_id` TEXT, `album_id` TEXT, `cover_id` TEXT, PRIMARY KEY(`namespace`, `generation`, `id`))",
+        "fields": [
+          {
+            "fieldPath": "namespace",
+            "columnName": "namespace",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "generation",
+            "columnName": "generation",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "serverOrder",
+            "columnName": "server_order",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "format",
+            "columnName": "format",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "artistName",
+            "columnName": "artist_name",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "albumTitle",
+            "columnName": "album_title",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "durationMs",
+            "columnName": "duration_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "trackNumber",
+            "columnName": "track_number",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "discNumber",
+            "columnName": "disc_number",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "artistId",
+            "columnName": "artist_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "albumId",
+            "columnName": "album_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "coverId",
+            "columnName": "cover_id",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "namespace",
+            "generation",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_cached_tracks_namespace_generation_server_order",
+            "unique": true,
+            "columnNames": [
+              "namespace",
+              "generation",
+              "server_order"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_cached_tracks_namespace_generation_server_order` ON `${TABLE_NAME}` (`namespace`, `generation`, `server_order`)"
+          },
+          {
+            "name": "index_cached_tracks_namespace_generation_album_id_server_order",
+            "unique": false,
+            "columnNames": [
+              "namespace",
+              "generation",
+              "album_id",
+              "server_order"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_cached_tracks_namespace_generation_album_id_server_order` ON `${TABLE_NAME}` (`namespace`, `generation`, `album_id`, `server_order`)"
+          },
+          {
+            "name": "index_cached_tracks_namespace_generation_artist_id_server_order",
+            "unique": false,
+            "columnNames": [
+              "namespace",
+              "generation",
+              "artist_id",
+              "server_order"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_cached_tracks_namespace_generation_artist_id_server_order` ON `${TABLE_NAME}` (`namespace`, `generation`, `artist_id`, `server_order`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '8751373de453d1772b138195e4ff695b')"
+    ]
+  }
+}

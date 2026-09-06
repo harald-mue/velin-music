@@ -111,18 +111,22 @@ Do not put bearer tokens or credentials into image URLs or cache keys.
 
 This removes unnecessary startup payload and replaces misleading `50+` counters with real totals.
 
-## Phase 4 — persistent metadata cache if still required
+## Phase 4 — persistent metadata snapshot
 
-Implement only after phases 1–3 are measured. Use Room and Paging 3 rather than loading every row into Compose state.
+**Implemented 2026-09-06.** The implementation uses Room and Paging 3 without weakening the server's bounded cursor API.
 
-1. Store public artist, album, and track metadata in an app-private Room database; never store tokens, source paths, or credential-bearing URLs.
-2. Namespace or clear cached data on paired device/server changes.
-3. Render Room flows immediately and refresh in the background.
-4. Use Paging 3 with a bounded RemoteMediator-style cursor strategy.
-5. Add a server library revision and eventually a bounded delta/tombstone protocol. Until a delta protocol exists, rebuild a snapshot in the background and atomically replace it after complete success.
-6. Keep server search authoritative initially; local FTS is optional after correctness and ranking requirements are defined.
+1. Public artist, album, and track metadata is stored in an app-private Room database. Tokens, source paths, and credential-bearing URLs are not stored there.
+2. Each cache is namespaced by SHA-256 of the normalized server URL, a NUL separator, and the device ID. The bearer token is deliberately excluded. Disconnect deletes the current namespace.
+3. A refresh downloads complete artist, album, and track collections in 200-item server pages into a new staging generation.
+4. The summary revision is read before and after the download. Activation requires an unchanged revision and exact downloaded artist, album, and track counts matching the first summary.
+5. The new generation becomes visible through one transactional `cache_state` update; incomplete generations are deleted and the previous active snapshot remains available.
+6. Room supplies `PagingSource` instances with a page size of 50 for the three library lists. Home reads the first 16 cached albums, and album detail reads cached tracks when an active snapshot contains that album.
+7. Only the empty-cache bootstrap requests a network summary and 16-album shelf while the full snapshot is built. Search, artist detail, track detail, and Android Auto remain network-backed.
+8. Snapshot requests retry only transport failures and HTTP 408, 429, 500, 502, 503, and 504, for at most three attempts total.
 
-A persistent cache makes repeat launches and album navigation instant, but it adds schema, invalidation, migration, and synchronization complexity. It is not the first response to a 2,096-track library.
+Room schema version 1 is exported into the repository. A delta/tombstone protocol and local FTS are not part of this implementation.
+
+Physical-device validation against the 2,096-track library activated a complete snapshot containing 176 artists, 253 albums, and 2,096 tracks. The measured synchronization took about 18 seconds from the first status request through the final summary verification. A subsequent cold process start reported 1.056 seconds of Android launch time, rendered the cached counts and Home shelf, and used only status plus summary requests; matching revision and counts avoided another catalog download.
 
 ## Server query follow-up
 
@@ -140,7 +144,7 @@ Before 100,000-track validation:
 2. Phase 1 automatic pagination, parallel detail requests, and bounded memory caches.
 3. Phase 2 artwork derivatives and explicit Coil caching.
 4. Phase 3 exact summary, revision invalidation, and lazy section loading.
-5. Re-measure on the 2,096-track device and a generated 100,000-track fixture.
-6. Decide from measurements whether Phase 4 Room/Paging persistence is justified.
+5. Phase 4 revision/count-verified Room snapshots and local PagingSource rendering.
+6. Re-measure on the 2,096-track device and a generated 100,000-track fixture.
 
 Each phase must retain authenticated requests, token-free URLs/metadata, queue caps, cancellation, latest-request-wins behavior, and Android Auto's shared Media3 session.

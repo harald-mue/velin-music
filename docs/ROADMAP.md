@@ -65,9 +65,10 @@ Authentication precedes protected library, artwork, and streaming endpoints so n
 - **Complete:** QR-camera and manual HTTP(S) pairing, bounded response handling, server URL validation, and Android Keystore-backed credential storage
 - **Complete:** authenticated OkHttp client with bounded model decoding, revocation handling, and navigation backed by initial server data
 
-## M9 — Android library UX — **active**
+## M9 — Android library UX — **complete**
 
-- **Partial:** Home loads exact counts and a bounded album shelf; artist, album, and track tabs load lazily with automatic cursor pagination; search and detail screens are complete
+- **Complete:** revision/count-verified Room snapshots, atomic generation activation, 50-item PagingSource pages, cached Home and album detail, and empty-cache network bootstrap
+- **Complete:** Home loads exact counts and a bounded album shelf; artist, album, and track tabs use local Paging; network-backed search and detail screens are complete
 - **Complete:** authenticated artwork in album/track rows, mini-player, Now Playing, and MediaSession metadata
 - **Complete:** loading, empty, and recoverable-error states for initial pages
 
@@ -88,7 +89,8 @@ Authentication precedes protected library, artwork, and streaming endpoints so n
 
 ## M11 — Polish and operations — **planned**
 
-- **Active:** Android large-library performance work following [`PERFORMANCE.md`](PERFORMANCE.md): automatic cursor prefetch, bounded detail caches, artwork derivatives, exact summary counts, revision invalidation, and lazy section loading are implemented; physical remeasurement and 2,000/100,000-track fixtures remain
+- **Active:** Android large-library performance work following [`PERFORMANCE.md`](PERFORMANCE.md): automatic cursor prefetch, bounded detail caches, artwork derivatives, exact summary counts, revision-verified Room snapshots, atomic activation, and local Paging are implemented; physical remeasurement and 2,000/100,000-track fixtures remain
+- **Complete:** one cancellable/coalescing server artwork-prewarm worker after startup and successful scan work, bounded to 1,024 referenced covers and 256/512 px variants per pass
 - accessibility and purposeful animation
 - robustness and integration testing
 - **Partial:** scratch Docker image, Compose bind-mounts for music and data, and operator documentation in [`DEPLOYMENT.md`](DEPLOYMENT.md); reverse-proxy path prefixes are documented; published registry images and backup automation remain open

@@ -36,7 +36,8 @@ data class LibraryUiState(
     val statusError: Boolean = false,
     val summary: LibrarySummary? = null,
     val hasActiveSnapshot: Boolean = false,
-    val homeAlbums: List<Album> = emptyList(),
+    val recentlyAddedAlbums: List<Album> = emptyList(),
+    val discoveryAlbums: List<Album> = emptyList(),
     val error: String? = null,
     val authenticationFailed: Boolean = false,
     val searchQuery: String = "",
@@ -94,8 +95,13 @@ class LibraryViewModel(
             }
         }
         viewModelScope.launch {
-            repository.homeAlbums(HomeAlbumItems).collectLatest { albums ->
-                mutableState.update { it.copy(homeAlbums = albums) }
+            repository.recentlyAddedAlbums(HomeAlbumItems).collectLatest { albums ->
+                mutableState.update { it.copy(recentlyAddedAlbums = albums) }
+            }
+        }
+        viewModelScope.launch {
+            repository.discoveryAlbums(HomeDiscoveryItems).collectLatest { albums ->
+                mutableState.update { it.copy(discoveryAlbums = albums) }
             }
         }
         viewModelScope.launch {
@@ -147,7 +153,7 @@ class LibraryViewModel(
                                     mutableState.update {
                                         it.copy(
                                             summary = summary,
-                                            homeAlbums = albums,
+                                            discoveryAlbums = albums,
                                             loading = false,
                                         )
                                     }
@@ -570,6 +576,7 @@ class LibraryViewModel(
 
     private companion object {
         const val HomeAlbumItems = 16
+        const val HomeDiscoveryItems = 32
         const val MaxCachedAlbums = 32
         const val MaxCachedArtists = 12
         const val MaxCachedTrackDetails = 64

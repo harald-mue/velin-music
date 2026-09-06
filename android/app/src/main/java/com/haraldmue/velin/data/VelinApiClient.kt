@@ -15,6 +15,7 @@ import okhttp3.Response
 import org.json.JSONException
 import org.json.JSONObject
 import java.io.IOException
+import java.time.Instant
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -282,6 +283,7 @@ class VelinApiClient(
         year = item.optionalInt("year"),
         coverId = item.optionalString("cover_id"),
         trackCount = item.nonNegativeInt("track_count"),
+        addedAtMs = item.optionalString("added_at")?.let { Instant.parse(it).toEpochMilli() },
     )
 
     private fun decodeTrackPage(json: JSONObject): Page<Track> = decodePage(json) { item ->

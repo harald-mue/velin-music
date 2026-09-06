@@ -45,6 +45,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -127,8 +128,15 @@ fun HomeScreen(
         else -> {
             val summary = state.summary ?: return
             val preferredColumns = albumGridColumns(velinWidthClass())
-            val albums = state.homeAlbums.take(preferredColumns * 4)
-            val columns = minOf(preferredColumns, maxOf(1, albums.size))
+            val recentlyAdded = state.recentlyAddedAlbums.take(preferredColumns * 2)
+            val recentIDs = recentlyAdded.mapTo(mutableSetOf(), Album::id)
+            val discovery = state.discoveryAlbums
+                .asSequence()
+                .filterNot { it.id in recentIDs }
+                .take(preferredColumns * 2)
+                .toList()
+            val visibleAlbumCount = maxOf(recentlyAdded.size, discovery.size)
+            val columns = minOf(preferredColumns, maxOf(1, visibleAlbumCount))
             LazyVerticalGrid(
                 columns = GridCells.Fixed(columns),
                 modifier = Modifier.fillMaxSize(),
@@ -137,34 +145,53 @@ fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    Column {
-                        LibraryOverview(
-                            artists = summary.artistCount.toString(),
-                            albums = summary.albumCount.toString(),
-                            tracks = summary.trackCount.toString(),
-                            onArtists = { onOpenLibrarySection(LibraryTab.Artists) },
-                            onAlbums = { onOpenLibrarySection(LibraryTab.Albums) },
-                            onTracks = { onOpenLibrarySection(LibraryTab.Tracks) },
+                    LibraryOverview(
+                        artists = summary.artistCount.toString(),
+                        albums = summary.albumCount.toString(),
+                        tracks = summary.trackCount.toString(),
+                        onArtists = { onOpenLibrarySection(LibraryTab.Artists) },
+                        onAlbums = { onOpenLibrarySection(LibraryTab.Albums) },
+                        onTracks = { onOpenLibrarySection(LibraryTab.Tracks) },
+                    )
+                }
+                if (recentlyAdded.isNotEmpty()) {
+                    item(key = "recent-header", span = { GridItemSpan(maxLineSpan) }) {
+                        HomeAlbumSectionHeader(
+                            title = "Recently added",
+                            onViewAll = { onOpenLibrarySection(LibraryTab.Albums) },
                         )
-                        if (albums.isNotEmpty()) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 20.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text("Albums", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                                TextButton(onClick = { onOpenLibrarySection(LibraryTab.Albums) }) {
-                                    Text("View all")
-                                }
-                            }
-                        }
+                    }
+                    items(recentlyAdded, key = { "recent-${it.id}" }) { album ->
+                        AlbumGridItem(album, artworkClient, onClick = { onAlbumClick(album) })
                     }
                 }
-                items(albums, key = { it.id }) { album ->
-                    AlbumGridItem(album, artworkClient, onClick = { onAlbumClick(album) })
+                if (discovery.isNotEmpty()) {
+                    item(key = "discover-header", span = { GridItemSpan(maxLineSpan) }) {
+                        HomeAlbumSectionHeader(
+                            title = "Discover",
+                            onViewAll = { onOpenLibrarySection(LibraryTab.Albums) },
+                        )
+                    }
+                    items(discovery, key = { "discover-${it.id}" }) { album ->
+                        AlbumGridItem(album, artworkClient, onClick = { onAlbumClick(album) })
+                    }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun HomeAlbumSectionHeader(title: String, onViewAll: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+        TextButton(onClick = onViewAll) {
+            Text("All albums")
         }
     }
 }
@@ -646,23 +673,36 @@ fun TrackDetailScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Button(onClick = { onPlay(track.toTrack()) }) {
+                        Button(
+                            onClick = { onPlay(track.toTrack()) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
                             Icon(Icons.Rounded.PlayArrow, contentDescription = null)
                             Spacer(Modifier.width(6.dp))
-                            Text(if (track.id == currentTrackId) "Again" else "Play")
+                            Text(if (track.id == currentTrackId) "Play again" else "Play")
                         }
-                        TextButton(onClick = { onPlayNext(track.toTrack()) }) {
-                            Text("Play next")
-                        }
-                        IconButton(onClick = { onAddToQueue(track.toTrack()) }) {
-                            Icon(Icons.AutoMirrored.Rounded.QueueMusic, contentDescription = "Add to queue")
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            OutlinedButton(
+                                onClick = { onPlayNext(track.toTrack()) },
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Text("Play next")
+                            }
+                            OutlinedButton(
+                                onClick = { onAddToQueue(track.toTrack()) },
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Text("Add to queue")
+                            }
                         }
                     }
                 }

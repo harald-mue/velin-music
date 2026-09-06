@@ -106,7 +106,7 @@ GET /api/v1/search?q=<query>
 }
 ```
 
-The revision changes whenever an indexed track row is inserted, updated, or deleted. Clients must compare it only for equality and must not infer scan or database state from its value.
+The revision changes whenever an indexed track row is inserted, updated, or deleted, and its opaque derivation is versioned when cached public album/artist/track fields change. Clients must compare it only for equality and must not infer scan, schema, or database state from its value.
 
 Android uses this contract to build a local snapshot. It reads the summary, downloads every artist, album, and track page with `limit=200` into a staging Room generation, then reads the summary again. It activates the generation only when the two revisions match and all three downloaded counts equal the first summary. This is client-side synchronization; the API does not provide a delta feed or historical snapshot cursor.
 
@@ -126,7 +126,7 @@ Collection responses use this shape:
 
 The initial search endpoint returns track models. Search input is treated as text, never raw FTS5 syntax. Punctuation separates Unicode letter/number terms; terms become quoted prefix matches joined with `AND`. Input must be valid UTF-8 and is limited to 2,048 bytes, 16 terms, and 64 Unicode code points per term. Results rank title matches above artist, album, and genre matches, then use title and opaque ID as deterministic tie-breakers.
 
-Detail responses expose metadata and opaque related IDs, not indexed roots or source paths. Track metadata uses lowercase `flac` or `mp3` format values and may include duration in milliseconds, sample rate, bit depth when available, channel count, genre, date, disc/track positions, and related artist/album/cover IDs. There is no playlist or saved-queue HTTP API; the Android client stores one optional queue snapshot locally and re-resolves track IDs through `GET /api/v1/tracks/{id}`.
+Detail responses expose metadata and opaque related IDs, not indexed roots or source paths. Album collection and detail responses include `added_at`, the RFC 3339 creation time of the newest indexed track belonging to that album; Android uses it only to order the bounded **Recently added** Home section. Track metadata uses lowercase `flac` or `mp3` format values and may include duration in milliseconds, sample rate, bit depth when available, channel count, genre, date, disc/track positions, and related artist/album/cover IDs. There is no playlist or saved-queue HTTP API; the Android client stores one optional queue snapshot locally and re-resolves track IDs through `GET /api/v1/tracks/{id}`.
 
 For snapshot synchronization only, Android retries transport failures and HTTP 408, 429, 500, 502, 503, and 504, with no more than three attempts total per request. Other HTTP failures are not retried. Search, artist detail, track detail, and Android Auto remain direct network clients; album detail may read the active local snapshot.
 

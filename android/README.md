@@ -43,11 +43,11 @@ After pairing, a dedicated OkHttp client adds the stored bearer token through an
 
 ## Room snapshot cache
 
-Public artist, album, and track metadata is cached in the app-private `library-cache.db`. The cache namespace is the SHA-256 digest of the normalized server URL, a NUL separator, and the device ID; the bearer token is not included. Disconnect removes the current namespace. Room schema version 1 is exported under `app/schemas/`.
+Public artist, album, and track metadata is cached in the app-private `library-cache.db`. The cache namespace is the SHA-256 digest of the normalized server URL, a NUL separator, and the device ID; the bearer token is not included. Disconnect removes the current namespace. Room schema version 2 is exported under `app/schemas/`; migration 1→2 retains the active snapshot and forces one background refresh to populate album recency.
 
 Refresh downloads complete collections in 200-item API pages into a staging generation. It reads the exact server summary before and after the download and activates the generation atomically only when the revision is unchanged and all downloaded entity counts match the first summary. A failed, cancelled, changed-revision, or count-mismatched refresh keeps the previous active snapshot.
 
-Library artist, album, and track lists read Room through Paging 3 with a page size of 50. Home reads the summary and 16-album shelf from the active snapshot, and album detail uses Room when the album is present in that snapshot. Only when no active snapshot exists does startup bootstrap a network summary and 16-album shelf while synchronization runs. Search, artist detail, track detail, and Android Auto remain network-backed.
+Library artist, album, and track lists read Room through Paging 3 with a page size of 50. Home reads exact counts plus bounded **Recently added** and **Discover** album sections from the active snapshot; Discover starts at one random per-process opaque ID and wraps through two index-bounded ranges rather than performing an unbounded random sort. Album detail uses Room when the album is present in that snapshot. Only when no active snapshot exists does startup bootstrap a network summary and bounded album shelf while synchronization runs. Search, artist detail, track detail, and Android Auto remain network-backed.
 
 Snapshot requests make at most three attempts. Retries are limited to transport failures and HTTP 408, 429, 500, 502, 503, and 504; authentication, validation, and other HTTP failures are not retried.
 

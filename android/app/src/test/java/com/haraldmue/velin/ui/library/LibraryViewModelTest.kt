@@ -70,7 +70,7 @@ class LibraryViewModelTest {
             assertEquals(1, gateway.artistPageRequests)
             assertEquals(1, gateway.trackPageRequests)
             assertEquals(1, viewModel.state.value.summary?.trackCount)
-            assertEquals("first", viewModel.state.value.homeAlbums.single().title)
+            assertEquals("first", viewModel.state.value.recentlyAddedAlbums.single().title)
         } finally {
             Dispatchers.resetMain()
         }
@@ -93,7 +93,7 @@ class LibraryViewModelTest {
 
             assertEquals("revision-2", viewModel.state.value.summary?.revision)
             assertEquals(2, gateway.artistPageRequests)
-            assertEquals("second", viewModel.state.value.homeAlbums.single().title)
+            assertEquals("second", viewModel.state.value.recentlyAddedAlbums.single().title)
         } finally {
             Dispatchers.resetMain()
         }
@@ -137,7 +137,7 @@ class LibraryViewModelTest {
             val gateway = ControllableLibraryGateway()
             val viewModel = viewModel(gateway)
             settle()
-            assertEquals("first", viewModel.state.value.homeAlbums.first().title)
+            assertEquals("first", viewModel.state.value.recentlyAddedAlbums.first().title)
             assertFalse(viewModel.state.value.loading)
 
             gateway.albumTitle = "stale"
@@ -150,7 +150,7 @@ class LibraryViewModelTest {
             viewModel.refresh()
             settle()
 
-            assertEquals("fresh", viewModel.state.value.homeAlbums.first().title)
+            assertEquals("fresh", viewModel.state.value.recentlyAddedAlbums.first().title)
             assertFalse(viewModel.state.value.loading)
         } finally {
             Dispatchers.resetMain()
@@ -173,7 +173,7 @@ class LibraryViewModelTest {
             settle()
 
             assertEquals("revision-1", viewModel.state.value.summary?.revision)
-            assertEquals("first", viewModel.state.value.homeAlbums.single().title)
+            assertEquals("first", viewModel.state.value.recentlyAddedAlbums.single().title)
             assertEquals("Could not refresh the library.", viewModel.state.value.error)
             assertFalse(viewModel.state.value.loading)
         } finally {
@@ -334,6 +334,7 @@ private fun snapshot(title: String) = object {
                 year = null,
                 coverId = null,
                 trackCount = 1,
+                addedAtMs = 1_000,
             ),
         )
     }

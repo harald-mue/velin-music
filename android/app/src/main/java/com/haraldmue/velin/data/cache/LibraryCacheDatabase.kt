@@ -10,6 +10,8 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Upsert
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -75,11 +77,42 @@ interface LibraryCacheDao {
           ON state.namespace = album.namespace
          AND state.active_generation = album.generation
         WHERE album.namespace = :namespace
-        ORDER BY album.server_order
+          AND album.added_at_ms IS NOT NULL
+        ORDER BY album.added_at_ms DESC, album.id
         LIMIT :limit
         """,
     )
-    fun observeHomeAlbums(namespace: String, limit: Int): Flow<List<CachedAlbumEntity>>
+    fun observeRecentlyAddedAlbums(namespace: String, limit: Int): Flow<List<CachedAlbumEntity>>
+
+    @Query(
+        """
+        SELECT * FROM (
+            SELECT album.* FROM cached_albums AS album
+            INNER JOIN cache_state AS state
+              ON state.namespace = album.namespace
+             AND state.active_generation = album.generation
+            WHERE album.namespace = :namespace AND album.id >= :startID
+            ORDER BY album.id
+            LIMIT :limit
+        )
+        UNION ALL
+        SELECT * FROM (
+            SELECT album.* FROM cached_albums AS album
+            INNER JOIN cache_state AS state
+              ON state.namespace = album.namespace
+             AND state.active_generation = album.generation
+            WHERE album.namespace = :namespace AND album.id < :startID
+            ORDER BY album.id
+            LIMIT :limit
+        )
+        LIMIT :limit
+        """,
+    )
+    fun observeDiscoveryAlbums(
+        namespace: String,
+        startID: String,
+        limit: Int,
+    ): Flow<List<CachedAlbumEntity>>
 
     @Query(
         """
@@ -169,13 +202,27 @@ interface LibraryCacheDao {
         CachedAlbumEntity::class,
         CachedTrackEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class LibraryCacheDatabase : RoomDatabase() {
     abstract fun libraryCacheDao(): LibraryCacheDao
 
     companion object {
+        private val Migration1To2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE cached_albums ADD COLUMN added_at_ms INTEGER")
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_cached_albums_namespace_generation_added_at_ms " +
+                        "ON cached_albums(namespace, generation, added_at_ms)",
+                )
+                db.execSQL(
+                    "UPDATE cache_state SET active_revision = 'resync-v2:' || active_revision " +
+                        "WHERE active_revision IS NOT NULL",
+                )
+            }
+        }
+
         @Volatile
         private var instance: LibraryCacheDatabase? = null
 
@@ -185,7 +232,7 @@ abstract class LibraryCacheDatabase : RoomDatabase() {
                     context.applicationContext,
                     LibraryCacheDatabase::class.java,
                     "library-cache.db",
-                ).build().also { instance = it }
+                ).addMigrations(Migration1To2).build().also { instance = it }
             }
     }
 }

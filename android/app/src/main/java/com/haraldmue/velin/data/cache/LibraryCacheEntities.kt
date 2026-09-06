@@ -43,7 +43,10 @@ data class CachedArtistEntity(
 @Entity(
     tableName = "cached_albums",
     primaryKeys = ["namespace", "generation", "id"],
-    indices = [Index(value = ["namespace", "generation", "server_order"], unique = true)],
+    indices = [
+        Index(value = ["namespace", "generation", "server_order"], unique = true),
+        Index(value = ["namespace", "generation", "added_at_ms"]),
+    ],
 )
 data class CachedAlbumEntity(
     val namespace: String,
@@ -55,8 +58,9 @@ data class CachedAlbumEntity(
     val year: Int?,
     @ColumnInfo(name = "cover_id") val coverId: String?,
     @ColumnInfo(name = "track_count") val trackCount: Int,
+    @ColumnInfo(name = "added_at_ms") val addedAtMs: Long?,
 ) {
-    fun toModel() = Album(id, title, artistName, year, coverId, trackCount)
+    fun toModel() = Album(id, title, artistName, year, coverId, trackCount, addedAtMs)
 }
 
 @Entity(
@@ -103,7 +107,7 @@ internal fun Artist.toCacheEntity(namespace: String, generation: String, order: 
     CachedArtistEntity(namespace, generation, id, order, name, albumCount, trackCount)
 
 internal fun Album.toCacheEntity(namespace: String, generation: String, order: Int) =
-    CachedAlbumEntity(namespace, generation, id, order, title, artistName, year, coverId, trackCount)
+    CachedAlbumEntity(namespace, generation, id, order, title, artistName, year, coverId, trackCount, addedAtMs)
 
 internal fun Track.toCacheEntity(namespace: String, generation: String, order: Int) =
     CachedTrackEntity(

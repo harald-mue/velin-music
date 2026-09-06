@@ -68,7 +68,7 @@ Authentication precedes protected library, artwork, and streaming endpoints so n
 ## M9 — Android library UX — **complete**
 
 - **Complete:** revision/count-verified Room snapshots, atomic generation activation, 50-item PagingSource pages, cached Home and album detail, and empty-cache network bootstrap
-- **Complete:** Home loads exact counts and a bounded album shelf; artist, album, and track tabs use local Paging; network-backed search and detail screens are complete
+- **Complete:** Home loads exact counts plus bounded recently added and discovery album sections; artist, album, and track tabs use local Paging; network-backed search and detail screens are complete
 - **Complete:** authenticated artwork in album/track rows, mini-player, Now Playing, and MediaSession metadata
 - **Complete:** loading, empty, and recoverable-error states for initial pages
 

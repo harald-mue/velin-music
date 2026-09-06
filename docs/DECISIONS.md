@@ -580,7 +580,7 @@ Network-backed cursor accumulation still made repeat launches dependent on conne
 
 ### Decision
 
-Persist public artist, album, and track models in app-private Room generations. Namespace rows by SHA-256 of normalized server URL, NUL, and device ID; exclude the bearer token. Download complete collections in 200-item pages to a staging generation, compare summary revisions before and after, verify all three downloaded counts against the first summary, and atomically activate only a complete matching generation. Keep the previous active generation on failure or mismatch. Serve library lists through Room PagingSource pages of 50, Home through a 16-album query, and album detail from Room when active. Use the network directly for search, artist detail, track detail, and Android Auto. Bootstrap summary plus the 16-album shelf only when no active snapshot exists. Retry snapshot requests at most three times and only for transport failures or HTTP 408, 429, 500, 502, 503, and 504. Delete the current namespace on disconnect and export Room schema version 1.
+Persist public artist, album, and track models in app-private Room generations. Namespace rows by SHA-256 of normalized server URL, NUL, and device ID; exclude the bearer token. Download complete collections in 200-item pages to a staging generation, compare summary revisions before and after, verify all three downloaded counts against the first summary, and atomically activate only a complete matching generation. Keep the previous active generation on failure or mismatch. Serve library lists through Room PagingSource pages of 50, Home through bounded cached queries, and album detail from Room when active. Use the network directly for search, artist detail, track detail, and Android Auto. Bootstrap summary plus the 16-album shelf only when no active snapshot exists. Retry snapshot requests at most three times and only for transport failures or HTTP 408, 429, 500, 502, 503, and 504. Delete the current namespace on disconnect and export each Room schema version.
 
 ### Consequences
 
@@ -603,3 +603,21 @@ Run one cancellable background prewarmer and coalesce concurrent triggers. Trigg
 ### Consequences
 
 One pass requests at most 2,048 cache entries, remaining within the file-count budget even if every variant is new. Failures are logged per item and do not stop the pass; server shutdown cancels active work and waits for the worker. The 128 px route remains on-demand.
+
+## ADR-030 — Bounded curated Home album sections
+
+Status: Accepted
+
+Date: 2026-09-06
+
+### Context
+
+Showing the first alphabetically sorted albums made Home deterministic but not useful: it neither highlighted new library additions nor helped users rediscover other albums. A full random SQLite sort would inspect and sort the whole catalog and is inappropriate for the 100,000-track target. Playback history is not yet persisted.
+
+### Decision
+
+Expose `added_at` on album responses as the creation time of the newest indexed member track and persist it as epoch milliseconds in Room schema version 2. Show at most two grid rows of **Recently added**, ordered by that value descending. Show at most two grid rows of **Discover**, excluding visible recent albums. Choose Discover from a random per-process opaque-ID starting point and wrap through at most two index-bounded ranges, with no linear offset scan or `ORDER BY RANDOM()`. Keep the existing alphabetical album library unchanged. Migration 1→2 retains the active generation, marks its revision for one background replacement, and omits Recently added until rows with recency are active.
+
+### Consequences
+
+Home becomes useful without introducing playback-history storage or unbounded queries. Discover changes after process recreation rather than during recomposition, so the screen remains stable while in use. Existing servers remain compatible with older clients because `added_at` is additive. The server salts the opaque revision with public cache-model version 2, ensuring updated server deployments replace snapshots that may have been downloaded from an older server without recency data.

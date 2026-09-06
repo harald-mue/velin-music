@@ -44,25 +44,39 @@ class LibraryCacheRepositoryTest {
     }
 
     @Test
-    fun preservesServerOrderingForHomeAndPlaybackOrderingForAlbumTracks() = runTest {
+    fun ordersHomeSectionsAndAlbumPlaybackDeterministically() = runTest {
         val gateway = FakeLibraryGateway(
             artists = listOf(
                 Artist("artist-2", "Second", 1, 1),
                 Artist("artist-1", "First", 1, 1),
             ),
-            albums = listOf(album("album-3"), album("album-1"), album("album-2")),
+            albums = listOf(
+                album("album-3", addedAtMs = 100),
+                album("album-1", addedAtMs = 300),
+                album("album-2", addedAtMs = 200),
+            ),
             tracks = listOf(
                 track("track-3", "album-1", trackNumber = 2),
                 track("other", "album-2"),
                 track("track-1", "album-1", trackNumber = 1),
             ),
         )
-        val repository = repository(gateway, "https://one.example", "device", "generation-1")
+        val repository = repository(
+            gateway,
+            "https://one.example",
+            "device",
+            "generation-1",
+            discoveryStartID = "album-2",
+        )
 
         assertTrue(repository.sync() is SnapshotSyncResult.Activated)
         assertEquals(
-            listOf("album-3", "album-1", "album-2"),
-            repository.homeAlbums().first().map(Album::id),
+            listOf("album-1", "album-2", "album-3"),
+            repository.recentlyAddedAlbums().first().map(Album::id),
+        )
+        assertEquals(
+            listOf("album-2", "album-3", "album-1"),
+            repository.discoveryAlbums().first().map(Album::id),
         )
         assertEquals(
             listOf("track-1", "track-3"),
@@ -219,11 +233,13 @@ class LibraryCacheRepositoryTest {
         server: String,
         device: String,
         generation: String,
+        discoveryStartID: String = "",
     ) = LibraryCacheRepository(
         database,
         gateway,
         credentials(server, device),
         generationId = { generation },
+        discoveryStartID = discoveryStartID,
     )
 }
 
@@ -305,8 +321,8 @@ private fun credentials(server: String, device: String) = DeviceCredentials(
     serverVersion = "1",
 )
 
-private fun album(id: String, title: String = id) =
-    Album(id, title, "Artist", 2026, null, 1)
+private fun album(id: String, title: String = id, addedAtMs: Long? = null) =
+    Album(id, title, "Artist", 2026, null, 1, addedAtMs)
 
 private fun track(id: String, albumId: String, trackNumber: Int? = null) = Track(
     id = id,

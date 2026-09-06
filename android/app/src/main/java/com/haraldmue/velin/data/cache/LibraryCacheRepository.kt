@@ -65,6 +65,7 @@ class LibraryCacheRepository(
     credentials: DeviceCredentials,
     private val clockMs: () -> Long = System::currentTimeMillis,
     private val generationId: () -> String = { UUID.randomUUID().toString() },
+    private val discoveryStartID: String = UUID.randomUUID().toString().replace("-", ""),
 ) {
     val namespace: String = CacheNamespace.from(credentials)
 
@@ -91,9 +92,16 @@ class LibraryCacheRepository(
         dao.tracksPagingSource(namespace)
     }.flow.map { pagingData -> pagingData.map(CachedTrackEntity::toModel) }
 
-    fun homeAlbums(limit: Int = DefaultHomeAlbumCount): Flow<List<Album>> =
-        dao.observeHomeAlbums(namespace, limit.coerceAtLeast(1))
+    fun recentlyAddedAlbums(limit: Int = DefaultHomeAlbumCount): Flow<List<Album>> =
+        dao.observeRecentlyAddedAlbums(namespace, limit.coerceIn(1, MaxHomeAlbumCount))
             .map { rows -> rows.map(CachedAlbumEntity::toModel) }
+
+    fun discoveryAlbums(limit: Int = DefaultDiscoveryAlbumCount): Flow<List<Album>> =
+        dao.observeDiscoveryAlbums(
+            namespace = namespace,
+            startID = discoveryStartID,
+            limit = limit.coerceIn(1, MaxHomeAlbumCount),
+        ).map { rows -> rows.map(CachedAlbumEntity::toModel) }
 
     fun albumTracks(albumId: String): Flow<List<Track>> =
         dao.observeAlbumTracks(namespace, albumId)
@@ -298,7 +306,9 @@ class LibraryCacheRepository(
     private companion object {
         const val NetworkPageSize = 200
         const val DatabasePageSize = 50
-        const val DefaultHomeAlbumCount = 20
+        const val DefaultHomeAlbumCount = 16
+        const val DefaultDiscoveryAlbumCount = 32
+        const val MaxHomeAlbumCount = 64
         const val MaxRequestAttempts = 3
         const val InitialRetryDelayMs = 250L
     }

@@ -6,7 +6,7 @@ Last updated: 2026-09-06
 
 The Go executable provides storage, indexing, authentication, administration, protected library APIs, artwork, and original-format streaming. The native Android project builds with Kotlin, Compose, and API 37 and provides a graphite visual system with Home/Queue/Library navigation, in-library search, and adaptive portrait/landscape layouts.
 
-Android has exact summary counts, a revision/count-verified Room snapshot cache, PagingSource-backed library lists, a cached 16-album Home shelf, and cached album detail when active. Search, artist detail, track detail, and Android Auto remain network-backed. Bounded visible-result/album queues, album/artist add-to-queue, queue reordering, a device-local saved-queue slot, and track-detail enqueue actions are wired through Media3, including authenticated artwork, Now Playing, seeking, automatic advance, previous/next, queue inspection/removal, shuffle, and repeat. Playback is owned by an exported `MediaLibraryService` that exposes the Android Auto media library (Albums and Artists). The server prewarms bounded 256/512 px artwork variants in one low-pressure worker.
+Android has exact summary counts, a revision/count-verified Room snapshot cache, PagingSource-backed library lists, bounded **Recently added** and **Discover** Home sections, and cached album detail when active. Search, artist detail, track detail, and Android Auto remain network-backed. Bounded visible-result/album queues, album/artist add-to-queue, queue reordering, a device-local saved-queue slot, and track-detail enqueue actions are wired through Media3, including authenticated artwork, Now Playing, seeking, automatic advance, previous/next, queue inspection/removal, shuffle, and repeat. Playback is owned by an exported `MediaLibraryService` that exposes the Android Auto media library (Albums and Artists). The server prewarms bounded 256/512 px artwork variants in one low-pressure worker.
 
 ## Current milestone
 
@@ -51,7 +51,7 @@ Android has exact summary counts, a revision/count-verified Room snapshot cache,
 - [x] Android QR/manual pairing with CameraX/ZXing, strict payload parsing, bounded OkHttp response handling, HTTP(S) URL normalization, safe errors, and Android Keystore-backed AES-GCM credential storage.
 - [x] Server administration pairing defaults `server_url` to the editable browser-visible base (including a reverse-proxy path prefix) and renders an ephemeral QR image directly from the token-free `server_url`/`code` payload.
 - [x] Authenticated Android OkHttp client with bearer injection, bounded JSON decoding, revocation handling, exact summary/revision loading, and full snapshot synchronization.
-- [x] Android Home with exact server counts and a 16-album shelf, lazy first-load Library sections, searchable track results, and cursor-paginated views with loading, empty, and recoverable-error states.
+- [x] Android Home with exact server counts plus bounded recently added and per-process discovery album sections; searchable track results and cursor-paginated network views include loading, empty, and recoverable-error states.
 - [x] Exported Android Media3 `MediaLibraryService` owning ExoPlayer and a `MediaLibrarySession`, with media audio focus, becoming-noisy handling, Android Auto media declaration, and foreground-service manifest declarations.
 - [x] Server-bound Media3 `OkHttpDataSource.Factory` with in-memory bearer authorization, exact paired-origin stream validation, disabled redirects, and token-free FLAC/MP3 `MediaItem` construction.
 - [x] Lifecycle-managed Media3 controller, playable Library/Search track rows, lazy notification permission, disconnect cleanup, and persistent buffering/play/pause mini-player.
@@ -66,7 +66,7 @@ Android has exact summary counts, a revision/count-verified Room snapshot cache,
 - [x] Android Auto media browse hierarchy for Albums and Artists, paginated children, FTS track search, and album-queue playback through the shared Media3 session.
 - [x] App-private Room v1 catalog cache namespaced by SHA-256 of normalized server URL, NUL, and device ID, with the schema exported and the current namespace cleared on disconnect.
 - [x] Complete 200-item-page snapshot downloads into staging generations, pre/post revision and exact-count verification, atomic activation, and retention of the previous snapshot after incomplete refreshes.
-- [x] Room PagingSource-backed artist/album/track lists with page size 50, cached 16-album Home shelf, and cached album detail when active; search, artist detail, track detail, and Android Auto remain network-backed.
+- [x] Room PagingSource-backed artist/album/track lists with page size 50, cached Home curation, and cached album detail when active; search, artist detail, track detail, and Android Auto remain network-backed.
 - [x] Empty-cache-only summary/shelf bootstrap and snapshot retries limited to transport failures plus HTTP 408/429/500/502/503/504 for at most three attempts.
 - [x] One cancellable/coalescing artwork-prewarm worker triggered after startup and successful scan work, limited per pass to deterministic 1,024 referenced covers, 256/512 px variants, and a 10 ms pause after each variant.
 
@@ -134,7 +134,9 @@ Deploy the new server image, then measure Room-backed scrolling, album/artist re
 
 ### 2026-09-06
 
-- Implemented performance Phase 4: a credential-derived, token-free Room namespace; complete revision/count-verified snapshots downloaded in 200-item pages; staging generations with atomic activation; 50-item Room PagingSource pages; empty-cache-only Home bootstrap; and exported Room schema version 1. Search, artist detail, track detail, and Android Auto remain network-backed, while album detail uses an active snapshot when available.
+- Replaced Home's first-alphabetical album shelf with bounded **Recently added** and **Discover** sections. Album responses now expose safe index recency, Room schema 2 persists it through a migration-triggered refresh, and discovery wraps two bounded index ranges from a random per-process opaque ID instead of using a linear offset or full random sort.
+- Preserved independent album, artist, track, and search scroll positions across tab changes and detail navigation, restored the submitted search text, and centered the Search loading indicator.
+- Implemented performance Phase 4: a credential-derived, token-free Room namespace; complete revision/count-verified snapshots downloaded in 200-item pages; staging generations with atomic activation; 50-item Room PagingSource pages; empty-cache-only Home bootstrap; and exported Room schemas. Search, artist detail, track detail, and Android Auto remain network-backed, while album detail uses an active snapshot when available.
 - Added bounded snapshot retry behavior: transport failures and HTTP 408, 429, 500, 502, 503, and 504 receive at most three attempts total; other failures do not retry. Disconnect clears the current namespace.
 - Validated Phase 4 on a physical device: a complete 176-artist, 253-album, 2,096-track snapshot activated in about 18 seconds, persisted across process death, and a 1.056-second cold Android launch reused it with only status and summary requests.
 - Added one cancellable/coalescing server artwork prewarmer after startup and successful scan work. Each deterministic pass covers at most 1,024 referenced covers at 256 and 512 px with a 10 ms pause after each variant.

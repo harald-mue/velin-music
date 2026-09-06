@@ -8,7 +8,7 @@ import (
 )
 
 // Summary is a compact exact view of the indexed library. Revision is opaque
-// to clients and changes whenever an indexed track row changes.
+// to clients and changes whenever an indexed track row or cached public model changes.
 type Summary struct {
 	ArtistCount int    `json:"artist_count"`
 	AlbumCount  int    `json:"album_count"`
@@ -43,6 +43,6 @@ func (r *QueryRepository) Summary(ctx context.Context) (Summary, error) {
 }
 
 func opaqueLibraryRevision(revision int64) string {
-	digest := sha256.Sum256([]byte(fmt.Sprintf("velin-library-revision-v1:%d", revision)))
+	digest := sha256.Sum256([]byte(fmt.Sprintf("velin-library-revision-v2:%d", revision)))
 	return base64.RawURLEncoding.EncodeToString(digest[:16])
 }

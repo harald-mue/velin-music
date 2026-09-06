@@ -120,11 +120,11 @@ This removes unnecessary startup payload and replaces misleading `50+` counters 
 3. A refresh downloads complete artist, album, and track collections in 200-item server pages into a new staging generation.
 4. The summary revision is read before and after the download. Activation requires an unchanged revision and exact downloaded artist, album, and track counts matching the first summary.
 5. The new generation becomes visible through one transactional `cache_state` update; incomplete generations are deleted and the previous active snapshot remains available.
-6. Room supplies `PagingSource` instances with a page size of 50 for the three library lists. Home reads the first 16 cached albums, and album detail reads cached tracks when an active snapshot contains that album.
-7. Only the empty-cache bootstrap requests a network summary and 16-album shelf while the full snapshot is built. Search, artist detail, track detail, and Android Auto remain network-backed.
+6. Room supplies `PagingSource` instances with a page size of 50 for the three library lists. Home reads bounded recently added and discovery selections, and album detail reads cached tracks when an active snapshot contains that album. Discovery starts at a random per-process opaque ID and wraps through two index-bounded ranges, avoiding both a linear offset scan and `ORDER BY RANDOM()` over the catalog.
+7. Only the empty-cache bootstrap requests a network summary and bounded album shelf while the full snapshot is built. Search, artist detail, track detail, and Android Auto remain network-backed.
 8. Snapshot requests retry only transport failures and HTTP 408, 429, 500, 502, 503, and 504, for at most three attempts total.
 
-Room schema version 1 is exported into the repository. A delta/tombstone protocol and local FTS are not part of this implementation.
+Room schema version 2 is exported into the repository; migration 1→2 retains the active generation and forces one refresh to populate album recency. A delta/tombstone protocol and local FTS are not part of this implementation.
 
 Physical-device validation against the 2,096-track library activated a complete snapshot containing 176 artists, 253 albums, and 2,096 tracks. The measured synchronization took about 18 seconds from the first status request through the final summary verification. A subsequent cold process start reported 1.056 seconds of Android launch time, rendered the cached counts and Home shelf, and used only status plus summary requests; matching revision and counts avoided another catalog download.
 

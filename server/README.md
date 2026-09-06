@@ -62,7 +62,7 @@ GET  /api/v1/tracks/{id}/stream
 HEAD /api/v1/tracks/{id}/stream
 ```
 
-Bearer-protected library routes require `Authorization: Bearer <token>`. The summary endpoint returns exact public entity counts plus an opaque trigger-maintained revision for client cache invalidation.
+Bearer-protected library routes require `Authorization: Bearer <token>`. The summary endpoint returns exact public entity counts plus an opaque, public-model-versioned trigger revision for client cache invalidation. Album responses include the newest member track's safe index-creation timestamp for Recently added ordering; no source path is exposed.
 
 Administration UI:
 

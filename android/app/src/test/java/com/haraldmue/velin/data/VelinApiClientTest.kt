@@ -179,7 +179,7 @@ class VelinApiClientTest {
         MockWebServer().use { server ->
             server.enqueue(
                 MockResponse().setBody(
-                    """{"id":"album-1","title":"Album","artist_name":"Artist","year":2026,"cover_id":"cover-1","track_count":8}""",
+                    """{"id":"album-1","title":"Album","artist_name":"Artist","year":2026,"cover_id":"cover-1","track_count":8,"added_at":"2026-01-02T03:04:05Z"}""",
                 ),
             )
             val client = VelinApiClient(credentials(server))
@@ -190,6 +190,7 @@ class VelinApiClientTest {
             assertEquals("Artist", album.artistName)
             assertEquals("cover-1", album.coverId)
             assertEquals(8, album.trackCount)
+            assertEquals(1_767_323_045_000L, album.addedAtMs)
             assertEquals("/api/v1/albums/album-1", server.takeRequest().path)
         }
     }

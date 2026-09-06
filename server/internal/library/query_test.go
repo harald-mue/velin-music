@@ -358,8 +358,11 @@ func TestQueryRepositoryGetsDetailsAndRejectsInvalidCursors(t *testing.T) {
 		t.Fatalf("ListAlbums() error = %v", err)
 	}
 	album, err := repository.GetAlbum(ctx, albums.Items[0].ID)
-	if err != nil || album.Title != albums.Items[0].Title || album.TrackCount != 1 {
+	if err != nil || album.Title != albums.Items[0].Title || album.TrackCount != 1 || album.AddedAt == "" {
 		t.Fatalf("GetAlbum() = %+v, error %v", album, err)
+	}
+	if album.AddedAt != albums.Items[0].AddedAt {
+		t.Fatalf("GetAlbum().AddedAt = %q, ListAlbums AddedAt = %q", album.AddedAt, albums.Items[0].AddedAt)
 	}
 	if _, err := repository.GetAlbum(ctx, "missing"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("GetAlbum(missing) error = %v, want ErrNotFound", err)

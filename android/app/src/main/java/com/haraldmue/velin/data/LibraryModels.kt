@@ -27,6 +27,7 @@ data class Album(
     val year: Int?,
     val coverId: String?,
     val trackCount: Int,
+    val addedAtMs: Long? = null,
 )
 
 data class Track(

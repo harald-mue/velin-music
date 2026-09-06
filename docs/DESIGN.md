@@ -32,7 +32,7 @@ Initial primary navigation:
 Home    Queue    Library
 ```
 
-Library contains Albums, Artists, Tracks, and Search. Queue is a primary destination for the current Media3 playback queue, with Clear plus one device-local Save/Load slot. Missing tracks from a loaded queue appear greyed and are dropped on the next save. Show a persistent mini-player only while playback is active. Server identity lives in the top-bar status indicator and an information dialog, not as a full-width Home banner.
+Home combines exact library counts with bounded **Recently added** and **Discover** album grids; it does not mirror the first alphabetic library page. Library contains Albums, Artists, Tracks, and Search. Queue is a primary destination for the current Media3 playback queue, with Clear plus one device-local Save/Load slot. Missing tracks from a loaded queue appear greyed and are dropped on the next save. Show a persistent mini-player only while playback is active. Server identity lives in the top-bar status indicator and an information dialog, not as a full-width Home banner.
 
 On compact portrait screens use a bottom navigation bar. On landscape and expanded widths use a navigation rail and split album, artist, track, and Now Playing layouts so artwork and lists sit side by side.
 

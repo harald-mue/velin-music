@@ -55,6 +55,7 @@ type Album struct {
 	Year       *int    `json:"year,omitempty"`
 	CoverID    *string `json:"cover_id,omitempty"`
 	TrackCount int     `json:"track_count"`
+	AddedAt    string  `json:"added_at"`
 }
 
 // Track is the public library representation of a track. Relative paths,
@@ -179,7 +180,8 @@ func (r *QueryRepository) ListAlbums(ctx context.Context, options PageOptions) (
 	}
 
 	query := `
-		SELECT al.id, al.title, al.album_artist_id, aa.name, al.year, al.cover_id, COUNT(t.id)
+		SELECT al.id, al.title, al.album_artist_id, aa.name, al.year, al.cover_id,
+			COUNT(t.id), MAX(t.created_at)
 		FROM albums al
 		LEFT JOIN artists aa ON aa.id = al.album_artist_id
 		JOIN tracks t ON t.album_id = al.id
@@ -220,7 +222,8 @@ func (r *QueryRepository) GetAlbum(ctx context.Context, id string) (Album, error
 		return album, err
 	}
 	row := r.db.QueryRowContext(ctx, `
-		SELECT al.id, al.title, al.album_artist_id, aa.name, al.year, al.cover_id, COUNT(t.id)
+		SELECT al.id, al.title, al.album_artist_id, aa.name, al.year, al.cover_id,
+			COUNT(t.id), MAX(t.created_at)
 		FROM albums al
 		LEFT JOIN artists aa ON aa.id = al.album_artist_id
 		JOIN tracks t ON t.album_id = al.id
@@ -630,7 +633,16 @@ func scanAlbum(row rowScanner) (Album, error) {
 	var album Album
 	var artistID, artistName, coverID sql.NullString
 	var year sql.NullInt64
-	if err := row.Scan(&album.ID, &album.Title, &artistID, &artistName, &year, &coverID, &album.TrackCount); err != nil {
+	if err := row.Scan(
+		&album.ID,
+		&album.Title,
+		&artistID,
+		&artistName,
+		&year,
+		&coverID,
+		&album.TrackCount,
+		&album.AddedAt,
+	); err != nil {
 		return album, err
 	}
 	album.ArtistID = nullStringPointer(artistID)

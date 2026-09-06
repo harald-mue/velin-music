@@ -101,7 +101,8 @@ func TestLibraryEndpointsListGetAndSearch(t *testing.T) {
 	albumsRes := httptest.NewRecorder()
 	handler.ServeHTTP(albumsRes, albumsReq)
 	var albums library.Page[library.Album]
-	if albumsRes.Code != http.StatusOK || json.NewDecoder(albumsRes.Body).Decode(&albums) != nil || len(albums.Items) != 2 {
+	if albumsRes.Code != http.StatusOK || json.NewDecoder(albumsRes.Body).Decode(&albums) != nil ||
+		len(albums.Items) != 2 || albums.Items[0].AddedAt == "" || albums.Items[1].AddedAt == "" {
 		t.Fatalf("albums = %d %+v", albumsRes.Code, albums)
 	}
 

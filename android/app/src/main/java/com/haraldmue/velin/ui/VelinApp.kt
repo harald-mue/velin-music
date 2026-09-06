@@ -85,6 +85,7 @@ import com.haraldmue.velin.ui.library.LibraryTab
 import com.haraldmue.velin.ui.library.LibraryUiState
 import com.haraldmue.velin.ui.library.LibraryViewModel
 import com.haraldmue.velin.ui.library.LibraryViewModelFactory
+import com.haraldmue.velin.ui.library.rememberLibraryScrollStates
 import com.haraldmue.velin.ui.library.TrackDetailScreen
 import com.haraldmue.velin.ui.layout.isLandscape
 import com.haraldmue.velin.ui.layout.usesNavigationRail
@@ -159,6 +160,7 @@ private fun ConnectedApp(
     val applicationContext = LocalContext.current.applicationContext
     var destination by remember { mutableStateOf(Destination.Home) }
     var libraryTab by rememberSaveable { mutableStateOf(LibraryTab.Albums) }
+    val libraryScrollStates = rememberLibraryScrollStates()
     var showNowPlaying by rememberSaveable { mutableStateOf(false) }
     var showServerInfo by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
@@ -475,6 +477,7 @@ private fun ConnectedApp(
                         albums = libraryViewModel.albums,
                         artists = libraryViewModel.artists,
                         tracks = libraryViewModel.tracks,
+                        scrollStates = libraryScrollStates,
                         artworkClient = artworkClient,
                         currentTrackId = playbackState.mediaId,
                         section = libraryTab,

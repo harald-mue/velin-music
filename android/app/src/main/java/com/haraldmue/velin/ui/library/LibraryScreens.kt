@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -49,9 +51,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,12 +80,32 @@ import com.haraldmue.velin.ui.layout.isLandscape
 import com.haraldmue.velin.ui.layout.usesSplitDetail
 import com.haraldmue.velin.ui.layout.velinWidthClass
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 
 enum class LibraryTab(val label: String) {
     Albums("Albums"),
     Artists("Artists"),
     Tracks("Tracks"),
     Search("Search"),
+}
+
+@Stable
+class LibraryScrollStates internal constructor(
+    val albums: LazyListState,
+    val artists: LazyListState,
+    val tracks: LazyListState,
+    val search: LazyListState,
+)
+
+@Composable
+fun rememberLibraryScrollStates(): LibraryScrollStates {
+    val albums = rememberLazyListState()
+    val artists = rememberLazyListState()
+    val tracks = rememberLazyListState()
+    val search = rememberLazyListState()
+    return remember(albums, artists, tracks, search) {
+        LibraryScrollStates(albums, artists, tracks, search)
+    }
 }
 
 @Composable
@@ -238,6 +262,7 @@ fun LibraryScreen(
     albums: Flow<PagingData<Album>>,
     artists: Flow<PagingData<Artist>>,
     tracks: Flow<PagingData<Track>>,
+    scrollStates: LibraryScrollStates,
     artworkClient: ArtworkClient,
     currentTrackId: String?,
     section: LibraryTab,
@@ -281,6 +306,7 @@ fun LibraryScreen(
                 when (section) {
                     LibraryTab.Albums -> PagingCatalog(
                         pagingItems = albumItems,
+                        listState = scrollStates.albums,
                         emptyMessage = "No indexed albums.",
                         key = Album::id,
                     ) { _, album ->
@@ -288,6 +314,7 @@ fun LibraryScreen(
                     }
                     LibraryTab.Artists -> PagingCatalog(
                         pagingItems = artistItems,
+                        listState = scrollStates.artists,
                         emptyMessage = "No indexed artists.",
                         key = Artist::id,
                     ) { _, artist ->
@@ -295,6 +322,7 @@ fun LibraryScreen(
                     }
                     LibraryTab.Tracks -> PagingCatalog(
                         pagingItems = trackItems,
+                        listState = scrollStates.tracks,
                         emptyMessage = "No indexed tracks.",
                         key = Track::id,
                     ) { _, track ->
@@ -312,6 +340,7 @@ fun LibraryScreen(
                     }
                     LibraryTab.Search -> SearchPane(
                         state = state,
+                        listState = scrollStates.search,
                         artworkClient = artworkClient,
                         currentTrackId = currentTrackId,
                         onSearch = onSearch,
@@ -329,6 +358,7 @@ fun LibraryScreen(
 @Composable
 private fun <T : Any> PagingCatalog(
     pagingItems: LazyPagingItems<T>,
+    listState: LazyListState,
     emptyMessage: String,
     key: (T) -> Any,
     row: @Composable (Int, T) -> Unit,
@@ -348,6 +378,7 @@ private fun <T : Any> PagingCatalog(
             Text(emptyMessage, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         else -> LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
         ) {
@@ -377,6 +408,7 @@ private fun <T : Any> PagingCatalog(
 @Composable
 private fun SearchPane(
     state: LibraryUiState,
+    listState: LazyListState,
     artworkClient: ArtworkClient,
     currentTrackId: String?,
     onSearch: (String) -> Unit,
@@ -385,7 +417,14 @@ private fun SearchPane(
     onLoadMoreSearch: () -> Unit,
     onPairAgain: () -> Unit,
 ) {
-    var query by remember { mutableStateOf("") }
+    var query by remember(state.searchQuery) { mutableStateOf(state.searchQuery) }
+    val coroutineScope = rememberCoroutineScope()
+    val submitSearch = {
+        if (query.trim() != state.searchQuery) {
+            coroutineScope.launch { listState.scrollToItem(0) }
+        }
+        onSearch(query)
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -395,7 +434,12 @@ private fun SearchPane(
             value = query,
             onValueChange = {
                 query = it
-                if (it.isBlank()) onSearch("")
+                if (it.isBlank()) {
+                    if (state.searchQuery.isNotEmpty()) {
+                        coroutineScope.launch { listState.scrollToItem(0) }
+                    }
+                    onSearch("")
+                }
             },
             modifier = Modifier.fillMaxWidth(),
             placeholder = { Text("Tracks, artists, or albums") },
@@ -403,10 +447,10 @@ private fun SearchPane(
             singleLine = true,
             shape = MaterialTheme.shapes.large,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(onSearch = { onSearch(query) }),
+            keyboardActions = KeyboardActions(onSearch = { submitSearch() }),
             trailingIcon = {
                 IconButton(
-                    onClick = { onSearch(query) },
+                    onClick = { submitSearch() },
                     enabled = query.isNotBlank() && !state.searchLoading,
                 ) {
                     Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = "Search")
@@ -419,7 +463,7 @@ private fun SearchPane(
                 actionLabel = "Pair again",
                 onAction = onPairAgain,
             )
-            state.searchLoading -> CircularProgressIndicator(modifier = Modifier.padding(top = 24.dp))
+            state.searchLoading -> CenteredProgress()
             state.searchError != null -> Text(
                 text = state.searchError,
                 modifier = Modifier.padding(top = 16.dp),
@@ -430,7 +474,10 @@ private fun SearchPane(
                 modifier = Modifier.padding(top = 16.dp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            else -> LazyColumn(modifier = Modifier.padding(top = 8.dp)) {
+            else -> LazyColumn(
+                state = listState,
+                modifier = Modifier.padding(top = 8.dp),
+            ) {
                 itemsIndexed(state.searchResults.items, key = { _, track -> track.id }) { index, track ->
                     PaginationPrefetchEffect(index, state.searchResults, onLoadMoreSearch)
                     TrackRow(

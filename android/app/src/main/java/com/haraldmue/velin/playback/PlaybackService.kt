@@ -27,6 +27,7 @@ import okhttp3.OkHttpClient
 class PlaybackService : MediaLibraryService() {
     private var mediaSession: MediaLibrarySession? = null
     private var artworkBitmapLoader: AuthenticatedArtworkBitmapLoader? = null
+    private var artworkMetadataEnricher: CurrentArtworkMetadataEnricher? = null
     private var libraryClient: VelinApiClient? = null
     private var playbackHttpClient: OkHttpClient? = null
     private var networkLossCanceller: NetworkLossCanceller? = null
@@ -72,11 +73,14 @@ class PlaybackService : MediaLibraryService() {
         val sessionBuilder = MediaLibrarySession.Builder(
             this,
             player,
-            AutoLibrarySessionCallback(serviceScope, catalog, resolver),
+            AutoLibrarySessionCallback(serviceScope, catalog, resolver, artworkBitmapLoader),
         )
             .setSessionActivity(sessionActivity)
         artworkBitmapLoader?.let(sessionBuilder::setBitmapLoader)
         mediaSession = sessionBuilder.build()
+        artworkBitmapLoader?.let { loader ->
+            artworkMetadataEnricher = CurrentArtworkMetadataEnricher(player, loader)
+        }
         if (!isLikelyEmulator()) {
             networkLossCanceller = NetworkLossCanceller(this, ::dropStaleNetwork).also { it.start() }
         }
@@ -88,6 +92,8 @@ class PlaybackService : MediaLibraryService() {
         networkLossCanceller?.stop()
         networkLossCanceller = null
         serviceScope.cancel()
+        artworkMetadataEnricher?.close()
+        artworkMetadataEnricher = null
         mediaSession?.run {
             player.release()
             release()

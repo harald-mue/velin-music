@@ -1,0 +1,47 @@
+package com.haraldmue.velin.playback
+
+import android.net.Uri
+import com.haraldmue.velin.data.DeviceCredentials
+import java.util.Base64
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import okio.Buffer
+import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35])
+class AuthenticatedArtworkBitmapLoaderTest {
+    @Test
+    fun embeddedArtworkUsesAuthenticatedBoundedVariant() {
+        MockWebServer().use { server ->
+            val expected = Base64.getDecoder().decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+            )
+            server.enqueue(MockResponse().setBody(Buffer().write(expected)))
+            val loader = AuthenticatedArtworkBitmapLoader(
+                DeviceCredentials(
+                    serverUrl = server.url("/").toString(),
+                    deviceId = "device",
+                    token = "secret-token",
+                    serverName = "Velin",
+                    serverVersion = "test",
+                ),
+            )
+            try {
+                val uri = Uri.parse(server.url("/api/v1/covers/cover-1/512").toString())
+
+                assertArrayEquals(expected, loader.loadEmbeddedArtworkData(uri).get())
+                val request = server.takeRequest()
+                assertEquals("/api/v1/covers/cover-1/256", request.path)
+                assertEquals("Bearer secret-token", request.getHeader("Authorization"))
+            } finally {
+                loader.close()
+            }
+        }
+    }
+}

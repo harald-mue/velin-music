@@ -44,6 +44,28 @@ internal class AuthenticatedArtworkBitmapLoader(
         executor.submit<Bitmap> { decodeBounded(data) }
 
     override fun loadBitmap(uri: Uri): ListenableFuture<Bitmap> = executor.submit<Bitmap> {
+        decodeBounded(readArtworkData(uri))
+    }
+
+    fun loadEmbeddedArtworkData(uri: Uri): ListenableFuture<ByteArray> = executor.submit<ByteArray> {
+        val url = uri.toString().toHttpUrlOrNull()
+            ?: throw IOException("Invalid artwork URL.")
+        if (!policy.isAllowed(url)) throw IOException("Artwork URL is outside the paired server.")
+        val pathSegments = url.pathSegments
+        val embeddedUrl = if (pathSegments.lastOrNull() == "512") {
+            url.newBuilder().setPathSegment(pathSegments.lastIndex, "256").build()
+        } else {
+            url
+        }
+        val data = readArtworkData(Uri.parse(embeddedUrl.toString()))
+        if (data.size > MAX_EMBEDDED_ARTWORK_BYTES) {
+            throw IOException("Artwork is too large for embedded media metadata.")
+        }
+        decodeBounded(data).recycle()
+        data
+    }
+
+    private fun readArtworkData(uri: Uri): ByteArray {
         val url = uri.toString().toHttpUrlOrNull()
             ?: throw IOException("Invalid artwork URL.")
         if (!policy.isAllowed(url)) throw IOException("Artwork URL is outside the paired server.")
@@ -54,14 +76,14 @@ internal class AuthenticatedArtworkBitmapLoader(
                 .get()
                 .build(),
         ).execute()
-        response.use {
+        return response.use {
             if (!it.isSuccessful) throw IOException("Artwork request failed (HTTP ${it.code}).")
             val body = it.body ?: throw IOException("Artwork response is empty.")
             if (body.contentLength() > MAX_ARTWORK_BYTES) throw IOException("Artwork response is too large.")
             val source = body.source()
             source.request(MAX_ARTWORK_BYTES + 1L)
             if (source.buffer.size > MAX_ARTWORK_BYTES) throw IOException("Artwork response is too large.")
-            decodeBounded(source.readByteArray())
+            source.readByteArray()
         }
     }
 
@@ -95,6 +117,7 @@ internal class AuthenticatedArtworkBitmapLoader(
 
     private companion object {
         const val MAX_ARTWORK_BYTES = 8 * 1_024 * 1_024
+        const val MAX_EMBEDDED_ARTWORK_BYTES = 1 * 1_024 * 1_024
         const val MAX_SOURCE_PIXELS = 50_000_000L
         const val MAX_BITMAP_DIMENSION = 1_024
         val SUPPORTED_MIME_TYPES = setOf("image/jpeg", "image/png", "image/gif", "image/webp")

@@ -14,17 +14,23 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import com.haraldmue.velin.data.ApiException
+import com.haraldmue.velin.playback.PlaybackArtwork.withEmbeddedArtwork
+import com.haraldmue.velin.playback.PlaybackArtwork.withoutPublicArtworkUri
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 internal class AutoLibrarySessionCallback(
     private val scope: CoroutineScope,
     private val catalog: AutoLibraryCatalog?,
     private val resolver: AutoPlaybackResolver?,
+    private val artworkLoader: AuthenticatedArtworkBitmapLoader?,
 ) : MediaLibrarySession.Callback {
     override fun onConnect(
         session: MediaSession,
@@ -138,11 +144,13 @@ internal class AutoLibrarySessionCallback(
                 return@withTimeout MediaItemsWithStartPosition(emptyList(), C.INDEX_UNSET, startPositionMs)
             }
             if (mediaItems.all { it.localConfiguration?.uri != null }) {
-                return@withTimeout MediaItemsWithStartPosition(mediaItems, startIndex, startPositionMs)
+                val enriched = embedCurrentArtwork(mediaItems, startIndex)
+                return@withTimeout MediaItemsWithStartPosition(enriched, startIndex, startPositionMs)
             }
             if (mediaItems.size == 1) {
                 val queue = requireResolver().queueFor(mediaItems.single().mediaId)
-                return@withTimeout MediaItemsWithStartPosition(queue.items, queue.startIndex, startPositionMs)
+                val enriched = embedCurrentArtwork(queue.items, queue.startIndex)
+                return@withTimeout MediaItemsWithStartPosition(enriched, queue.startIndex, startPositionMs)
             }
             val resolved = mediaItems.map { item ->
                 if (item.localConfiguration?.uri != null) {
@@ -151,7 +159,37 @@ internal class AutoLibrarySessionCallback(
                     requireResolver().playableTrack(item.mediaId)
                 }
             }
-            MediaItemsWithStartPosition(resolved, startIndex, startPositionMs)
+            val enriched = embedCurrentArtwork(resolved, startIndex)
+            MediaItemsWithStartPosition(enriched, startIndex, startPositionMs)
+        }
+    }
+
+    private suspend fun embedCurrentArtwork(
+        items: List<MediaItem>,
+        currentIndex: Int,
+    ): List<MediaItem> {
+        val loader = artworkLoader ?: return items
+        if (currentIndex !in items.indices) return items
+        val item = items[currentIndex]
+        if (item.mediaMetadata.artworkData != null) {
+            return if (item.mediaMetadata.artworkUri == null) {
+                items
+            } else {
+                items.toMutableList().apply {
+                    this[currentIndex] = item.withoutPublicArtworkUri()
+                }
+            }
+        }
+        val artworkUri = item.mediaMetadata.artworkUri ?: return items
+        val data = try {
+            await(loader.loadEmbeddedArtworkData(artworkUri))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return items
+        }
+        return items.toMutableList().apply {
+            this[currentIndex] = item.withEmbeddedArtwork(data)
         }
     }
 
@@ -160,6 +198,19 @@ internal class AutoLibrarySessionCallback(
 
     private fun requireResolver(): AutoPlaybackResolver =
         resolver ?: throw UnpairedLibraryException()
+
+    private suspend fun <T> await(future: ListenableFuture<T>): T =
+        suspendCancellableCoroutine { continuation ->
+            future.addListener(
+                {
+                    runCatching { future.get() }
+                        .onSuccess { value -> continuation.resume(value) }
+                        .onFailure { error -> continuation.resumeWithException(error) }
+                },
+                { it.run() },
+            )
+            continuation.invokeOnCancellation { future.cancel(true) }
+        }
 
     private fun <T : Any> libraryFuture(block: suspend () -> LibraryResult<T>): ListenableFuture<LibraryResult<T>> {
         val future = SettableFuture.create<LibraryResult<T>>()

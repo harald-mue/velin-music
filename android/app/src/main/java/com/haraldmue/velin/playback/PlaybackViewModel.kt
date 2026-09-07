@@ -20,6 +20,7 @@ import com.haraldmue.velin.data.SavedQueueRecord
 import com.haraldmue.velin.data.SavedQueueStore
 import com.haraldmue.velin.data.Track
 import com.haraldmue.velin.data.canSaveSavedQueue
+import com.haraldmue.velin.playback.PlaybackArtwork.playbackArtworkUrl
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -492,7 +493,7 @@ class PlaybackViewModel(
                     mediaId = queueItem.mediaId,
                     title = queueItem.mediaMetadata.title?.toString() ?: "Unknown track",
                     artist = queueItem.mediaMetadata.artist?.toString(),
-                    artworkUrl = queueItem.mediaMetadata.artworkUri?.toString(),
+                    artworkUrl = queueItem.mediaMetadata.playbackArtworkUrl(),
                 )
             }
         } else {
@@ -514,7 +515,7 @@ class PlaybackViewModel(
             title = metadata?.title?.toString(),
             artist = metadata?.artist?.toString(),
             album = metadata?.albumTitle?.toString(),
-            artworkUrl = metadata?.artworkUri?.toString(),
+            artworkUrl = metadata?.playbackArtworkUrl(),
             format = when (item?.localConfiguration?.mimeType) {
                 "audio/flac" -> "FLAC"
                 "audio/mpeg" -> "MP3"
@@ -632,7 +633,7 @@ class PlaybackViewModel(
             mediaId = track.id,
             title = track.title,
             artist = track.artistName,
-            artworkUrl = mediaItem.mediaMetadata.artworkUri?.toString(),
+            artworkUrl = mediaItem.mediaMetadata.playbackArtworkUrl(),
             available = true,
         )
 

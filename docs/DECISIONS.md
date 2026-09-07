@@ -621,3 +621,22 @@ Expose `added_at` on album responses as the creation time of the newest indexed 
 ### Consequences
 
 Home becomes useful without introducing playback-history storage or unbounded queries. Discover changes after process recreation rather than during recomposition, so the screen remains stable while in use. Existing servers remain compatible with older clients because `added_at` is additive. The server salts the opaque revision with public cache-model version 2, ensuring updated server deployments replace snapshots that may have been downloaded from an older server without recency data.
+
+## ADR-031 — Embedded current artwork without a public URI for Android Auto
+
+Status: Accepted
+
+Date: 2026-09-06
+
+### Context
+
+Velin publishes token-free paired-origin cover URLs and authenticates them only in-process. Compose, notifications, and Android Auto's full Now Playing screen can use the Media3 bitmap loader. Android Auto's compact dashboard instead consumes legacy `MediaMetadataCompat` and fetches `ALBUM_ART_URI` / `DISPLAY_ICON_URI` itself, which returns 401. If those URI keys are present, many dashboard versions ignore an already-supplied bitmap. Spotify works because its artwork URIs are fetchable by Auto.
+
+### Decision
+
+Keep constructing playback items with a token-free artwork URI for Compose. Before the first MediaSession metadata publish and on later current-item transitions, download a 256 px derivative through the authenticated loader, validate it, cap it at 1 MiB, set `artworkData`, and clear `artworkUri`. Store the original URL only in MediaItem extras. Restore the URI when stripping previously embedded queue items. Do not embed artwork for every queued track.
+
+### Consequences
+
+The compact Auto dashboard receives bitmap-only legacy metadata. Compose continues to load covers through extras. At most one current item retains embedded bytes. URI loading remains the fallback if embedding fails.
+

@@ -1,6 +1,6 @@
 # Velin Development Progress
 
-Last updated: 2026-09-06
+Last updated: 2026-09-08
 
 ## Current status
 
@@ -62,7 +62,7 @@ Android has exact summary counts, a revision/count-verified Room snapshot cache,
 - [x] Artist detail with play-all, add-to-queue, and bounded artist-track loading; track detail with metadata, play action, and album/artist navigation.
 - [x] Track-detail Play next and Add to queue actions, plus album/artist Add to queue, with bounded Media3 queue insertion.
 - [x] Media3-backed queue screen with current-item highlighting, direct selection, safe removal, long-press drag reorder (shuffle off), shuffle, repeat Off/All/One, Clear, and one device-local Save/Load slot.
-- [x] Extended ExoPlayer buffering (2–5 minute window) with 120-second stream read timeouts; network-loss cancellation applies on devices, not emulators.
+- [x] ExoPlayer buffering of 60–120 seconds with 120-second stream read timeouts; network-loss cancellation applies on devices, not emulators.
 - [x] Android Auto media browse hierarchy for Albums and Artists, paginated children, FTS track search, and album-queue playback through the shared Media3 session.
 - [x] App-private Room v1 catalog cache namespaced by SHA-256 of normalized server URL, NUL, and device ID, with the schema exported and the current namespace cleared on disconnect.
 - [x] Complete 200-item-page snapshot downloads into staging generations, pre/post revision and exact-count verification, atomic activation, and retention of the previous snapshot after incomplete refreshes.
@@ -131,6 +131,13 @@ Android:
 Deploy the new server image, then measure Room-backed scrolling, album/artist reopening, first-cover latency before and after server prewarming, transferred artwork bytes, and memory against the physical 2,096-track library. Repeat snapshot and startup measurements against the generated 100,000-track fixture. Do not infer unmeasured performance improvements.
 
 ## Recent work log
+
+### 2026-09-08
+
+- Stopped Compose playback-progress polling when Media3 is neither playing nor buffering, so the 500 ms position/buffer loop no longer runs while paused, idle, or ended.
+- Tightened ExoPlayer buffering from 2–5 minutes to 60–120 seconds so LAN FLAC still has headroom above the 50-second defaults without holding a five-minute radio fill. Stream read timeout stays 120 seconds so idle-on-buffer reads are not aborted.
+- Reduced playback-artwork CPU and idle work: embed validation uses bounds-only decode, the loader's two threads time out after one idle second, the artwork HTTP pool idles after 30 seconds, and previously embedded queue items are restored by media ID instead of scanning every queued track.
+- Shortened idle OkHttp keep-alives from the five-minute default: Coil/library artwork and metadata pools drop unused sockets after 30 seconds; the stream pool waits 60 seconds so FLAC buffer pauses are not forced through a new handshake.
 
 ### 2026-09-06
 

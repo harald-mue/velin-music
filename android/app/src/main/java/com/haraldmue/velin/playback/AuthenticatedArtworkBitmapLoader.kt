@@ -8,14 +8,18 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.ListeningExecutorService
 import com.google.common.util.concurrent.MoreExecutors
 import com.haraldmue.velin.data.ArtworkAuthorizationInterceptor
+import com.haraldmue.velin.data.ArtworkHttpIdleConnections
+import com.haraldmue.velin.data.ArtworkHttpIdleKeepAliveSeconds
 import com.haraldmue.velin.data.ArtworkRequestPolicy
 import com.haraldmue.velin.data.DeviceCredentials
+import okhttp3.ConnectionPool
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.Closeable
 import java.io.IOException
-import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 
 /** Loads notification/lock-screen artwork without placing credentials in media metadata. */
@@ -30,10 +34,19 @@ internal class AuthenticatedArtworkBitmapLoader(
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .callTimeout(20, TimeUnit.SECONDS)
+        .connectionPool(
+            ConnectionPool(ArtworkHttpIdleConnections, ArtworkHttpIdleKeepAliveSeconds, TimeUnit.SECONDS),
+        )
         .addInterceptor(ArtworkAuthorizationInterceptor(policy, credentials.token))
         .build()
     private val executor: ListeningExecutorService = MoreExecutors.listeningDecorator(
-        Executors.newFixedThreadPool(2) { runnable ->
+        ThreadPoolExecutor(
+            0,
+            2,
+            ArtworkLoaderKeepAliveSeconds,
+            TimeUnit.SECONDS,
+            LinkedBlockingQueue(),
+        ) { runnable ->
             Thread(runnable, "velin-artwork").apply { isDaemon = true }
         },
     )
@@ -61,7 +74,7 @@ internal class AuthenticatedArtworkBitmapLoader(
         if (data.size > MAX_EMBEDDED_ARTWORK_BYTES) {
             throw IOException("Artwork is too large for embedded media metadata.")
         }
-        decodeBounded(data).recycle()
+        validateArtworkBounds(data, MAX_EMBEDDED_ARTWORK_BYTES)
         data
     }
 
@@ -97,13 +110,25 @@ internal class AuthenticatedArtworkBitmapLoader(
         executor.shutdownNow()
     }
 
-    private fun decodeBounded(data: ByteArray): Bitmap {
-        if (data.isEmpty() || data.size > MAX_ARTWORK_BYTES) throw IOException("Invalid artwork data.")
+    private fun validateArtworkBounds(data: ByteArray, maxBytes: Int) {
+        if (data.isEmpty() || data.size > maxBytes) throw IOException("Invalid artwork data.")
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(data, 0, data.size, bounds)
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw IOException("Unsupported artwork data.")
-        val pixels = bounds.outWidth.toLong() * bounds.outHeight.toLong()
-        if (pixels > MAX_SOURCE_PIXELS) throw IOException("Artwork dimensions are too large.")
+        if (!artworkSourceIsWithinLimits(
+                byteCount = data.size,
+                maxBytes = maxBytes,
+                width = bounds.outWidth,
+                height = bounds.outHeight,
+            )
+        ) {
+            throw IOException("Unsupported artwork data.")
+        }
+    }
+
+    private fun decodeBounded(data: ByteArray): Bitmap {
+        validateArtworkBounds(data, MAX_ARTWORK_BYTES)
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(data, 0, data.size, bounds)
         var sampleSize = 1
         while (bounds.outWidth / sampleSize > MAX_BITMAP_DIMENSION ||
             bounds.outHeight / sampleSize > MAX_BITMAP_DIMENSION
@@ -118,8 +143,21 @@ internal class AuthenticatedArtworkBitmapLoader(
     private companion object {
         const val MAX_ARTWORK_BYTES = 8 * 1_024 * 1_024
         const val MAX_EMBEDDED_ARTWORK_BYTES = 1 * 1_024 * 1_024
-        const val MAX_SOURCE_PIXELS = 50_000_000L
         const val MAX_BITMAP_DIMENSION = 1_024
         val SUPPORTED_MIME_TYPES = setOf("image/jpeg", "image/png", "image/gif", "image/webp")
     }
+}
+
+internal const val ArtworkLoaderKeepAliveSeconds = 1L
+
+internal fun artworkSourceIsWithinLimits(
+    byteCount: Int,
+    maxBytes: Int,
+    width: Int,
+    height: Int,
+    maxPixels: Long = 50_000_000L,
+): Boolean {
+    if (byteCount <= 0 || byteCount > maxBytes) return false
+    if (width <= 0 || height <= 0) return false
+    return width.toLong() * height.toLong() <= maxPixels
 }

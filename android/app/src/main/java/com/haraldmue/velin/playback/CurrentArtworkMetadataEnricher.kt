@@ -21,6 +21,7 @@ internal class CurrentArtworkMetadataEnricher(
     private var generation = 0
     private var pending: ListenableFuture<ByteArray>? = null
     private var closed = false
+    private var embeddedMediaId: String? = null
 
     init {
         player.addListener(this)
@@ -44,21 +45,18 @@ internal class CurrentArtworkMetadataEnricher(
         pending?.cancel(true)
         pending = null
         if (closed || item == null) {
-            removeMarkedArtwork(C.INDEX_UNSET)
+            restorePreviousEmbedded(retainedMediaId = null)
             return
         }
+        restorePreviousEmbedded(retainedMediaId = item.mediaId)
         val metadata = item.mediaMetadata
         if (metadata.artworkData != null) {
             if (metadata.artworkUri != null) {
                 replaceCurrent(item.withoutPublicArtworkUri())
             }
-            removeMarkedArtwork(player.currentMediaItemIndex)
             return
         }
-        val uri = metadata.artworkUri ?: run {
-            removeMarkedArtwork(player.currentMediaItemIndex)
-            return
-        }
+        val uri = metadata.artworkUri ?: return
 
         val mediaId = item.mediaId
         val future = loader.loadEmbeddedArtworkData(uri)
@@ -71,8 +69,6 @@ internal class CurrentArtworkMetadataEnricher(
                     if (closed || requestGeneration != generation || current.mediaId != mediaId) {
                         return@post
                     }
-                    val index = player.currentMediaItemIndex
-                    removeMarkedArtwork(index)
                     replaceCurrent(current.withEmbeddedArtwork(data))
                     pending = null
                 }
@@ -87,12 +83,35 @@ internal class CurrentArtworkMetadataEnricher(
         player.replaceMediaItem(index, item)
     }
 
-    private fun removeMarkedArtwork(retainedIndex: Int) {
-        for (index in 0 until player.mediaItemCount) {
-            if (index == retainedIndex) continue
-            val item = player.getMediaItemAt(index)
-            if (item.mediaMetadata.extras?.getBoolean(PlaybackArtwork.EXTRA_EMBEDDED) != true) continue
-            player.replaceMediaItem(index, item.withoutEmbeddedArtwork())
+    private fun restorePreviousEmbedded(retainedMediaId: String?) {
+        val previousId = embeddedMediaId
+        if (previousId != null && previousId != retainedMediaId) {
+            for (index in 0 until player.mediaItemCount) {
+                val queued = player.getMediaItemAt(index)
+                if (!isPreviouslyEmbeddedQueueItem(
+                        mediaId = queued.mediaId,
+                        extrasEmbedded = queued.mediaMetadata.extras?.getBoolean(PlaybackArtwork.EXTRA_EMBEDDED) == true,
+                        previousMediaId = previousId,
+                        retainedMediaId = retainedMediaId,
+                    )
+                ) {
+                    continue
+                }
+                player.replaceMediaItem(index, queued.withoutEmbeddedArtwork())
+                break
+            }
         }
+        embeddedMediaId = retainedMediaId
     }
 }
+
+internal fun isPreviouslyEmbeddedQueueItem(
+    mediaId: String,
+    extrasEmbedded: Boolean,
+    previousMediaId: String?,
+    retainedMediaId: String?,
+): Boolean =
+    extrasEmbedded &&
+        previousMediaId != null &&
+        mediaId == previousMediaId &&
+        mediaId != retainedMediaId

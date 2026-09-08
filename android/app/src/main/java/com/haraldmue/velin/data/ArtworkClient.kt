@@ -5,6 +5,7 @@ import coil3.ImageLoader
 import coil3.disk.DiskCache
 import coil3.memory.MemoryCache
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
+import okhttp3.ConnectionPool
 import okhttp3.Dispatcher
 import okhttp3.HttpUrl
 import okhttp3.Interceptor
@@ -77,9 +78,15 @@ class ArtworkClient(
             .connectTimeout(8, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
             .callTimeout(20, TimeUnit.SECONDS)
+            .connectionPool(
+                ConnectionPool(ArtworkHttpIdleConnections, ArtworkHttpIdleKeepAliveSeconds, TimeUnit.SECONDS),
+            )
             .build()
     }
 }
+
+internal const val ArtworkHttpIdleConnections = 2
+internal const val ArtworkHttpIdleKeepAliveSeconds = 30L
 
 internal class ArtworkRequestPolicy(serverAddress: String) {
     private val serverUrl = ServerAddress.normalize(serverAddress).toHttpUrl()

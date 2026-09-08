@@ -5,6 +5,25 @@ import org.junit.Test
 
 class NowPlayingStateTest {
     @Test
+    fun progressPollingRunsOnlyWhilePlayingOrBuffering() {
+        assertEquals(false, shouldPollPlaybackProgress(isPlaying = false, isBuffering = false))
+        assertEquals(true, shouldPollPlaybackProgress(isPlaying = true, isBuffering = false))
+        assertEquals(true, shouldPollPlaybackProgress(isPlaying = false, isBuffering = true))
+        assertEquals(true, shouldPollPlaybackProgress(isPlaying = true, isBuffering = true))
+        assertEquals(500L, PlaybackProgressPollMs)
+    }
+
+    @Test
+    fun playbackBuffersCapAtTwoMinutesWithFlacHeadroom() {
+        assertEquals(60_000, PlaybackMinBufferMs)
+        assertEquals(120_000, PlaybackMaxBufferMs)
+        assertEquals(2_500, PlaybackBufferForPlaybackMs)
+        assertEquals(5_000, PlaybackBufferForPlaybackAfterRebufferMs)
+        assertEquals(true, PlaybackMinBufferMs >= PlaybackBufferForPlaybackAfterRebufferMs)
+        assertEquals(true, PlaybackMaxBufferMs >= PlaybackMinBufferMs)
+    }
+
+    @Test
     fun progressFractionIsBounded() {
         assertEquals(0f, progressFraction(10, null))
         assertEquals(0f, progressFraction(-1, 100))

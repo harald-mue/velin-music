@@ -129,17 +129,18 @@ class PlaybackService : MediaLibraryService() {
         private fun createPlaybackLoadControl(): DefaultLoadControl =
             DefaultLoadControl.Builder()
                 .setBufferDurationsMs(
-                    MIN_BUFFER_MS,
-                    MAX_BUFFER_MS,
-                    BUFFER_FOR_PLAYBACK_MS,
-                    BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS,
+                    PlaybackMinBufferMs,
+                    PlaybackMaxBufferMs,
+                    PlaybackBufferForPlaybackMs,
+                    PlaybackBufferForPlaybackAfterRebufferMs,
                 )
                 .build()
-
-        // ExoPlayer defaults are 50 s min/max; longer windows help self-hosted FLAC over LAN.
-        private const val MIN_BUFFER_MS = 120_000
-        private const val MAX_BUFFER_MS = 300_000
-        private const val BUFFER_FOR_PLAYBACK_MS = 2_500
-        private const val BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS = 5_000
     }
 }
+
+// ExoPlayer defaults are 50 s min/max. One extra minute of headroom still helps
+// self-hosted FLAC over LAN without keeping radio/RAM on a five-minute fill.
+internal const val PlaybackMinBufferMs = 60_000
+internal const val PlaybackMaxBufferMs = 120_000
+internal const val PlaybackBufferForPlaybackMs = 2_500
+internal const val PlaybackBufferForPlaybackAfterRebufferMs = 5_000

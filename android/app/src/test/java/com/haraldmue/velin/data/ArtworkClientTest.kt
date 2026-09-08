@@ -86,6 +86,12 @@ class ArtworkClientTest {
         }
     }
 
+    @Test
+    fun idleHttpKeepAliveIsShorterThanOkHttpDefault() {
+        assertEquals(2, ArtworkHttpIdleConnections)
+        assertEquals(30L, ArtworkHttpIdleKeepAliveSeconds)
+    }
+
     private fun client(policy: ArtworkRequestPolicy): OkHttpClient = OkHttpClient.Builder()
         .followRedirects(false)
         .followSslRedirects(false)

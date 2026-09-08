@@ -8,6 +8,7 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import com.haraldmue.velin.data.CredentialStore
 import com.haraldmue.velin.data.DeviceCredentials
 import com.haraldmue.velin.data.ServerAddress
+import okhttp3.ConnectionPool
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -59,9 +60,15 @@ class PlaybackDataSourceFactory private constructor(
             .readTimeout(120, TimeUnit.SECONDS)
             .writeTimeout(15, TimeUnit.SECONDS)
             .callTimeout(0, TimeUnit.MILLISECONDS)
+            .connectionPool(
+                ConnectionPool(PlaybackHttpIdleConnections, PlaybackHttpIdleKeepAliveSeconds, TimeUnit.SECONDS),
+            )
             .build()
     }
 }
+
+internal const val PlaybackHttpIdleConnections = 2
+internal const val PlaybackHttpIdleKeepAliveSeconds = 60L
 
 internal class ServerBoundDataSource(
     private val serverUrl: HttpUrl,

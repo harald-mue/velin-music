@@ -214,6 +214,12 @@ class VelinApiClientTest {
         }
     }
 
+    @Test
+    fun idleHttpKeepAliveIsShorterThanOkHttpDefault() {
+        assertEquals(4, LibraryHttpIdleConnections)
+        assertEquals(30L, LibraryHttpIdleKeepAliveSeconds)
+    }
+
     private fun credentials(server: MockWebServer, path: String = ""): DeviceCredentials = DeviceCredentials(
         serverUrl = server.url(path.ifEmpty { "/" }).toString().trimEnd('/'),
         deviceId = "device-1",

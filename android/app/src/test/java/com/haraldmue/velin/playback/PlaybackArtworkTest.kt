@@ -83,4 +83,35 @@ class PlaybackArtworkTest {
         assertEquals(original, restored.mediaMetadata.playbackArtworkUrl())
         assertEquals(false, restored.mediaMetadata.extras?.getBoolean(PlaybackArtwork.EXTRA_EMBEDDED))
     }
+
+    @Test
+    fun previouslyEmbeddedQueueItemIsTheTrackedNonCurrentId() {
+        assertEquals(
+            true,
+            isPreviouslyEmbeddedQueueItem(
+                mediaId = "track-1",
+                extrasEmbedded = true,
+                previousMediaId = "track-1",
+                retainedMediaId = "track-2",
+            ),
+        )
+        assertEquals(
+            false,
+            isPreviouslyEmbeddedQueueItem(
+                mediaId = "track-2",
+                extrasEmbedded = true,
+                previousMediaId = "track-1",
+                retainedMediaId = "track-2",
+            ),
+        )
+        assertEquals(
+            false,
+            isPreviouslyEmbeddedQueueItem(
+                mediaId = "track-1",
+                extrasEmbedded = false,
+                previousMediaId = "track-1",
+                retainedMediaId = "track-2",
+            ),
+        )
+    }
 }

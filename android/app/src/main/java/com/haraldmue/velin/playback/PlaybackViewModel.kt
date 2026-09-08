@@ -23,6 +23,7 @@ import com.haraldmue.velin.data.canSaveSavedQueue
 import com.haraldmue.velin.playback.PlaybackArtwork.playbackArtworkUrl
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -94,13 +95,16 @@ class PlaybackViewModel(
     private var controller: MediaController? = null
     private var pendingQueue: PendingQueue? = null
     private var controllerReleased = false
+    private var progressJob: Job? = null
 
     private val listener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
             updateState(player)
+            syncProgressPolling(player)
         }
 
         override fun onPlayerError(error: PlaybackException) {
+            stopProgressPolling()
             mutableState.value = mutableState.value.copy(
                 isPlaying = false,
                 isBuffering = false,
@@ -127,6 +131,7 @@ class PlaybackViewModel(
                     controller = connectedController
                     connectedController.addListener(listener)
                     updateState(connectedController)
+                    syncProgressPolling(connectedController)
                     pendingQueue?.let { queue ->
                         pendingQueue = null
                         startQueue(connectedController, queue.items, queue.startIndex)
@@ -139,12 +144,6 @@ class PlaybackViewModel(
             },
             ContextCompat.getMainExecutor(applicationContext),
         )
-        viewModelScope.launch {
-            while (isActive) {
-                controller?.let(::updateProgress)
-                delay(500)
-            }
-        }
     }
 
     fun play(track: Track) {
@@ -370,6 +369,7 @@ class PlaybackViewModel(
     fun releaseForCredentialChange() {
         if (controllerReleased) return
         controllerReleased = true
+        stopProgressPolling()
         forgetOverlay()
         controller?.removeListener(listener)
         controller = null
@@ -552,6 +552,29 @@ class PlaybackViewModel(
         )
     }
 
+    private fun syncProgressPolling(player: Player) {
+        if (!shouldPollPlaybackProgress(player.isPlaying, player.playbackState == Player.STATE_BUFFERING)) {
+            stopProgressPolling()
+            return
+        }
+        if (progressJob?.isActive == true) return
+        progressJob = viewModelScope.launch {
+            while (isActive) {
+                delay(PlaybackProgressPollMs)
+                val current = controller ?: break
+                if (!shouldPollPlaybackProgress(current.isPlaying, current.playbackState == Player.STATE_BUFFERING)) {
+                    break
+                }
+                updateProgress(current)
+            }
+        }
+    }
+
+    private fun stopProgressPolling() {
+        progressJob?.cancel()
+        progressJob = null
+    }
+
     private fun updateProgress(player: Player) {
         if (player.currentMediaItem == null) return
         val duration = playableDuration(player)
@@ -716,6 +739,11 @@ class PlaybackViewModel(
 
     private data class PendingQueue(val items: List<MediaItem>, val startIndex: Int)
 }
+
+internal const val PlaybackProgressPollMs = 500L
+
+internal fun shouldPollPlaybackProgress(isPlaying: Boolean, isBuffering: Boolean): Boolean =
+    isPlaying || isBuffering
 
 internal fun isValidPlaybackQueue(queueSize: Int, startIndex: Int): Boolean =
     queueSize in 1..500 && startIndex in 0 until queueSize

@@ -41,6 +41,12 @@ class PlaybackDataSourceFactoryTest {
     }
 
     @Test
+    fun idleStreamKeepAliveIsShorterThanOkHttpDefault() {
+        assertEquals(2, PlaybackHttpIdleConnections)
+        assertEquals(60L, PlaybackHttpIdleKeepAliveSeconds)
+    }
+
+    @Test
     fun dataSourceAddsBearerHeaderAndReadsOnlyServerStream() {
         MockWebServer().use { server ->
             server.enqueue(MockResponse().setBody("audio-bytes"))

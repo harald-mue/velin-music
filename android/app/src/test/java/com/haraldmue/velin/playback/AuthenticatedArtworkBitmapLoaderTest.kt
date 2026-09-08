@@ -1,6 +1,7 @@
 package com.haraldmue.velin.playback
 
 import android.net.Uri
+import com.haraldmue.velin.data.ArtworkHttpIdleKeepAliveSeconds
 import com.haraldmue.velin.data.DeviceCredentials
 import java.util.Base64
 import okhttp3.mockwebserver.MockResponse
@@ -43,5 +44,16 @@ class AuthenticatedArtworkBitmapLoaderTest {
                 loader.close()
             }
         }
+    }
+
+    @Test
+    fun artworkSourceLimitsRejectEmptyOrOversizedFrames() {
+        assertEquals(true, artworkSourceIsWithinLimits(byteCount = 128, maxBytes = 1_024, width = 256, height = 256))
+        assertEquals(false, artworkSourceIsWithinLimits(byteCount = 0, maxBytes = 1_024, width = 256, height = 256))
+        assertEquals(false, artworkSourceIsWithinLimits(byteCount = 2_048, maxBytes = 1_024, width = 256, height = 256))
+        assertEquals(false, artworkSourceIsWithinLimits(byteCount = 128, maxBytes = 1_024, width = 0, height = 256))
+        assertEquals(false, artworkSourceIsWithinLimits(byteCount = 128, maxBytes = 1_024, width = 10_000, height = 10_000))
+        assertEquals(1L, ArtworkLoaderKeepAliveSeconds)
+        assertEquals(30L, ArtworkHttpIdleKeepAliveSeconds)
     }
 }

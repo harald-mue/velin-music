@@ -7,6 +7,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import okhttp3.Call
 import okhttp3.Callback
+import okhttp3.ConnectionPool
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -357,9 +358,15 @@ class VelinApiClient(
             .readTimeout(15, TimeUnit.SECONDS)
             .writeTimeout(10, TimeUnit.SECONDS)
             .callTimeout(20, TimeUnit.SECONDS)
+            .connectionPool(
+                ConnectionPool(LibraryHttpIdleConnections, LibraryHttpIdleKeepAliveSeconds, TimeUnit.SECONDS),
+            )
             .build()
     }
 }
+
+internal const val LibraryHttpIdleConnections = 4
+internal const val LibraryHttpIdleKeepAliveSeconds = 30L
 
 private suspend fun Call.awaitCancellable(): Response =
     suspendCancellableCoroutine { continuation ->

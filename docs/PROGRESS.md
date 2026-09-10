@@ -132,6 +132,7 @@ Deploy the new server image, then measure Room-backed scrolling, album/artist re
 
 ### 2026-09-10
 
+- Added `make server-package`, `make android-package`, and `make package` so `dist/` can hold a stripped host server binary and a signed release APK. `make android-package` sources `~/Keystore/velin-android-signing.env` and fails without a keystore. Debug `make android-build` is unchanged.
 - Added `.github/workflows/ci.yml` so pushes and pull requests to `main` run server `gofmt`/`go test`/`go vet` and Android `testDebugUnitTest`/`lintDebug` via the existing Make targets. Race tests, `govulncheck`, emulator, and DHU jobs are out of this slice.
 - Android Auto browse tiles use exported `content://com.haraldmue.velin.artwork/covers/{id}/256` because Gearhead fetches `iconUri` itself and does not render embedded browse bitmaps. Fetched covers are written into the Coil disk cache instead of leftover temp files. Snapshot changes notify Auto for Albums and Artists as well as root/Recent/Discover. The Auto recency tab is labeled **Recent**; phone Home stays **Recently added**. Auto album and artist items are browsable folders; Albums is a list. A tap loads Room tracks when the snapshot has that album.
 

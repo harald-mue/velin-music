@@ -1,8 +1,33 @@
+import java.io.File
+
 plugins {
     id("com.android.application")
     id("androidx.room")
     id("com.google.devtools.ksp")
     id("org.jetbrains.kotlin.plugin.compose")
+}
+
+val androidKeystorePath = System.getenv("VELIN_ANDROID_KEYSTORE")?.trim().orEmpty()
+val androidStoreFile =
+    androidKeystorePath.takeIf { it.isNotEmpty() }?.let { path ->
+        val candidate = File(path)
+        if (candidate.isAbsolute) candidate else rootProject.file(path)
+    }
+if (androidKeystorePath.isNotEmpty() && androidStoreFile?.isFile != true) {
+    error("VELIN_ANDROID_KEYSTORE is set but is not a readable file: $androidKeystorePath")
+}
+val requireReleaseSigning =
+    providers.gradleProperty("velin.requireReleaseSigning").orNull == "true"
+if (requireReleaseSigning && androidStoreFile == null) {
+    error("Release packaging requires VELIN_ANDROID_KEYSTORE")
+}
+val androidStorePassword = System.getenv("VELIN_ANDROID_STORE_PASSWORD") ?: ""
+val androidKeyAlias = System.getenv("VELIN_ANDROID_KEY_ALIAS") ?: ""
+val androidKeyPassword = System.getenv("VELIN_ANDROID_KEY_PASSWORD") ?: ""
+if (androidStoreFile != null &&
+    (androidStorePassword.isEmpty() || androidKeyAlias.isEmpty() || androidKeyPassword.isEmpty())
+) {
+    error("Release signing requires VELIN_ANDROID_STORE_PASSWORD, VELIN_ANDROID_KEY_ALIAS, and VELIN_ANDROID_KEY_PASSWORD")
 }
 
 android {
@@ -19,6 +44,17 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (androidStoreFile != null) {
+            create("release") {
+                storeFile = androidStoreFile
+                storePassword = androidStorePassword
+                keyAlias = androidKeyAlias
+                keyPassword = androidKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -26,6 +62,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            if (androidStoreFile != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 

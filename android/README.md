@@ -17,6 +17,7 @@ From this directory:
 
 ```sh
 ./gradlew assembleDebug
+./gradlew assembleRelease
 ./gradlew testDebugUnitTest
 ./gradlew lintDebug
 ```
@@ -25,11 +26,12 @@ Or from the repository root:
 
 ```sh
 make android-build
+make android-package
 make android-test
 make android-lint
 ```
 
-The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
+The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`. `make android-package` copies a **signed** release APK to `dist/velin-android.apk`. It loads `~/Keystore/velin-android-signing.env` and fails without a keystore; it does not write an unsigned APK. Do not commit the keystore. Release builds omit Compose UI tooling and skip debug-only request timing. R8 minify stays off. Sideloaded release APKs still need Android Auto **Unknown sources** unless they are a Play-distributed app.
 
 ## Pairing
 

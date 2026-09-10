@@ -43,6 +43,6 @@ func (r *QueryRepository) Summary(ctx context.Context) (Summary, error) {
 }
 
 func opaqueLibraryRevision(revision int64) string {
-	digest := sha256.Sum256([]byte(fmt.Sprintf("velin-library-revision-v2:%d", revision)))
+	digest := sha256.Sum256(fmt.Appendf(nil, "velin-library-revision-v2:%d", revision))
 	return base64.RawURLEncoding.EncodeToString(digest[:16])
 }

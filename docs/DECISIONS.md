@@ -658,3 +658,21 @@ Run one GitHub Actions workflow on pushes and pull requests to `main` with two j
 
 CI matches the commands developers already run. Failures block merges only for those checks. Race, vulnerability, Markdown-link, emulator, and DHU validation remain local or later jobs.
 
+## ADR-033 — Make-backed host packages without debug APKs or committed keys
+
+Status: Accepted
+
+Date: 2026-09-10
+
+### Context
+
+`make android-build` produces a debug APK. Sideload and host-copy workflows need a non-debug APK and a stripped server binary without publishing a registry image or committing a keystore.
+
+### Decision
+
+Add `make server-package`, `make android-package`, and `make package`. The Android release type stays unminified. `make android-package` sources `~/Keystore/velin-android-signing.env` (outside the repository) and fails if that file, the keystore, or the four `VELIN_ANDROID_*` values are missing. Gradle receives `-Pvelin.requireReleaseSigning=true` so an unsigned release APK is not copied to `dist/`. Debug builds and unit tests do not need the keystore. Do not commit keystores or passwords. The Docker scratch image remains the portable server artifact (`make docker-save`).
+
+### Consequences
+
+Installable phone packages require the operator-held PKCS12 key at `~/Keystore/velin-release.jks`. Losing that key means updates cannot replace an existing install. Host `dist/velin-server` matches the build machine OS/arch, not a NAS of a different architecture.
+

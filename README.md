@@ -348,15 +348,20 @@ make server-test    # run Go tests
 make server-test-race
 make server-lint    # go vet
 make server-fmt     # format Go sources
-make android-build  # build the debug APK
+make android-build  # build the Android debug APK
+make android-package # build a release APK into dist/
 make android-test   # run Android unit tests
 make android-lint   # run Android lint
+make server-package # stripped host binary → dist/velin-server
+make package        # server-package and android-package
 make test           # run server and Android unit tests
 make docker-build   # build the scratch server image
-make docker-save    # build and write dist/velin-server-local.tar.gz for another host
+make docker-save    # build and write dist/velin-server-local.tar.gz for copy to another host
 make docker-up      # build and start Compose
 make clean          # remove build artifacts
 ```
+
+`make android-package` writes a **signed** release APK to `dist/velin-android.apk`. It sources `~/Keystore/velin-android-signing.env` (outside this repository) and **fails** if that file or the keystore is missing. Do not commit keystores. `make server-package` writes a stripped binary for this machine’s OS/arch; use `make docker-save` for a portable linux image.
 
 Pushes and pull requests to `main` run the same server `gofmt`/`go test`/`go vet` and Android unit-test/`lintDebug` checks in [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Race tests, vulnerability scans, emulator, and Android Auto Desktop Head Unit jobs are not part of that workflow.
 

@@ -77,11 +77,14 @@ make server-fmt
 make docker-build
 make docker-save
 make docker-up
+make server-package
 make android-build
+make android-package
 make android-test
 make android-lint
+make package
 make test
 make clean
 ```
 
-The Android project uses its checked-in Gradle Wrapper and requires JDK 17 plus Android SDK Platform 37.0. Record Android build, test, and lint results separately from server validation. GitHub Actions runs `gofmt`, `make server-test`, `make server-lint`, `make android-test`, and `make android-lint` from `.github/workflows/ci.yml`.
+The Android project uses its checked-in Gradle Wrapper and requires JDK 17 plus Android SDK Platform 37.0. Record Android build, test, and lint results separately from server validation. `make android-package` sources `~/Keystore/velin-android-signing.env` and fails without a keystore. GitHub Actions runs `gofmt`, `make server-test`, `make server-lint`, `make android-test`, and `make android-lint` from `.github/workflows/ci.yml`.

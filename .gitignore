@@ -20,6 +20,8 @@ coverage.out
 /data/
 server/data/
 /dist/
+*.jks
+*.keystore
 
 # Android
 android/.gradle/

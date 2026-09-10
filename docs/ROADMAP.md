@@ -94,6 +94,6 @@ Authentication precedes protected library, artwork, and streaming endpoints so n
 - accessibility and purposeful animation
 - robustness and integration testing
 - **Partial:** scratch Docker image, Compose bind-mounts for music and data, and operator documentation in [`DEPLOYMENT.md`](DEPLOYMENT.md); reverse-proxy path prefixes are documented; published registry images and backup automation remain open
-- GitHub Actions CI for server and Android validation
+- **Complete:** GitHub Actions CI for server `gofmt`/`go test`/`go vet` and Android unit tests/`lintDebug` (no emulator or DHU)
 
 Explicit v1 non-goals remain transcoding, offline downloads, multiple users, playlists, tag editing, internet metadata/cover fetching, Chromecast, a custom Android Auto template UI, Android Automotive OS, iOS, and recommendations. The phone app’s one local saved-queue file is not a playlist feature.

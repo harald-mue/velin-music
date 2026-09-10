@@ -69,10 +69,7 @@ Android has exact summary counts, a revision/count-verified Room snapshot cache,
 - [x] Room PagingSource-backed artist/album/track lists with page size 50, cached Home curation, and cached album detail when active; search, artist detail, and track detail remain network-backed; Android Auto Albums and Artists read Room while search stays network-backed; Auto home shelves and cached album/artist children read Room.
 - [x] Empty-cache-only summary/shelf bootstrap and snapshot retries limited to transport failures plus HTTP 408/429/500/502/503/504 for at most three attempts.
 - [x] One cancellable/coalescing artwork-prewarm worker triggered after startup and successful scan work, limited per pass to deterministic 1,024 referenced covers, 256/512 px variants, and a 10 ms pause after each variant.
-
-## Deferred
-
-- [ ] Add GitHub Actions CI for server and Android validation.
+- [x] GitHub Actions CI for server `gofmt`/`go test`/`go vet` and Android `testDebugUnitTest`/`lintDebug` (no emulator or DHU).
 
 ## Known issues and boundaries
 
@@ -86,7 +83,7 @@ Android has exact summary counts, a revision/count-verified Room snapshot cache,
 - MP3 duration is estimated from bitrate when Xing/VBRI frame counts are unavailable.
 - There is no released-database upgrade fixture or backup/downgrade policy yet.
 - The Go module path is `github.com/harald-mue/velin-music/server`.
-- `go vet` is the only configured static analysis and no CI workflow exists. The installed `staticcheck` binary is incompatible with the environment's Go 1.27 export-data format.
+- `go vet` is the only configured server static analysis. GitHub Actions runs `gofmt` (check), `make server-test`, `make server-lint`, `make android-test`, and `make android-lint` on `main` pushes and pull requests. The installed `staticcheck` binary is incompatible with the environment's Go 1.27 export-data format and is not part of CI.
 
 ## Important implementation notes
 
@@ -117,6 +114,7 @@ Server:
 - Reachable vulnerability scan: PASS (`go run golang.org/x/vuln/cmd/govulncheck@latest ./...`); one unreachable Windows-only advisory remains in the Go-1.23-compatible transitive `golang.org/x/sys` version.
 - Markdown link validation: PASS
 - Full-tree whitespace validation: PASS (`git diff --cached --check` before the initial commit)
+- CI workflow: present (`.github/workflows/ci.yml`); not yet observed on GitHub until the workflow runs on `main` or a pull request
 
 Android:
 
@@ -134,6 +132,7 @@ Deploy the new server image, then measure Room-backed scrolling, album/artist re
 
 ### 2026-09-10
 
+- Added `.github/workflows/ci.yml` so pushes and pull requests to `main` run server `gofmt`/`go test`/`go vet` and Android `testDebugUnitTest`/`lintDebug` via the existing Make targets. Race tests, `govulncheck`, emulator, and DHU jobs are out of this slice.
 - Android Auto browse tiles use exported `content://com.haraldmue.velin.artwork/covers/{id}/256` because Gearhead fetches `iconUri` itself and does not render embedded browse bitmaps. Fetched covers are written into the Coil disk cache instead of leftover temp files. Snapshot changes notify Auto for Albums and Artists as well as root/Recent/Discover. The Auto recency tab is labeled **Recent**; phone Home stays **Recently added**. Auto album and artist items are browsable folders; Albums is a list. A tap loads Room tracks when the snapshot has that album.
 
 ### 2026-09-09

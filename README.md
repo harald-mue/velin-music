@@ -358,6 +358,8 @@ make docker-up      # build and start Compose
 make clean          # remove build artifacts
 ```
 
+Pushes and pull requests to `main` run the same server `gofmt`/`go test`/`go vet` and Android unit-test/`lintDebug` checks in [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Race tests, vulnerability scans, emulator, and Android Auto Desktop Head Unit jobs are not part of that workflow.
+
 Commands are intentionally only added when they perform real validation. Read [`AGENT.md`](AGENT.md) before making changes.
 
 ## License

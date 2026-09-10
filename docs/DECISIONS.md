@@ -640,3 +640,21 @@ Keep constructing playback items with a token-free artwork URI for Compose. Befo
 
 The compact Auto dashboard receives bitmap-only legacy metadata. Compose continues to load covers through extras. At most one current item retains embedded bytes. URI loading remains the fallback if embedding fails.
 
+## ADR-032 — GitHub Actions for Make-backed server and Android validation
+
+Status: Accepted
+
+Date: 2026-09-10
+
+### Context
+
+Server tests, `go vet`, Android unit tests, and Android lint already exist as Make targets, but every push to `main` was unvalidated on GitHub. Emulator and Android Auto Desktop Head Unit jobs would be slow, flaky, and still would not replace device or in-car checks.
+
+### Decision
+
+Run one GitHub Actions workflow on pushes and pull requests to `main` with two jobs: server (`gofmt` check, `make server-test`, `make server-lint`) and Android (`make android-test`, `make android-lint`). Pin Go from `server/go.mod` and JDK 17. Do not run the race detector, `govulncheck`, emulator instrumentation, or DHU in this workflow. Do not add `staticcheck`.
+
+### Consequences
+
+CI matches the commands developers already run. Failures block merges only for those checks. Race, vulnerability, Markdown-link, emulator, and DHU validation remain local or later jobs.
+

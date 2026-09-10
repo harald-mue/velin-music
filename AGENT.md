@@ -84,4 +84,4 @@ make test
 make clean
 ```
 
-The Android project uses its checked-in Gradle Wrapper and requires JDK 17 plus Android SDK Platform 37.0. Record Android build, test, and lint results separately from server validation.
+The Android project uses its checked-in Gradle Wrapper and requires JDK 17 plus Android SDK Platform 37.0. Record Android build, test, and lint results separately from server validation. GitHub Actions runs `gofmt`, `make server-test`, `make server-lint`, `make android-test`, and `make android-lint` from `.github/workflows/ci.yml`.

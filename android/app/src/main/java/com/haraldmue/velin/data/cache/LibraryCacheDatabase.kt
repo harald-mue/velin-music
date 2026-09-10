@@ -48,6 +48,19 @@ interface LibraryCacheDao {
 
     @Query(
         """
+        SELECT artist.* FROM cached_artists AS artist
+        INNER JOIN cache_state AS state
+          ON state.namespace = artist.namespace
+         AND state.active_generation = artist.generation
+        WHERE artist.namespace = :namespace
+        ORDER BY artist.server_order
+        LIMIT :limit OFFSET :offset
+        """,
+    )
+    suspend fun artistsWindow(namespace: String, limit: Int, offset: Int): List<CachedArtistEntity>
+
+    @Query(
+        """
         SELECT album.* FROM cached_albums AS album
         INNER JOIN cache_state AS state
           ON state.namespace = album.namespace
@@ -57,6 +70,19 @@ interface LibraryCacheDao {
         """,
     )
     fun albumsPagingSource(namespace: String): PagingSource<Int, CachedAlbumEntity>
+
+    @Query(
+        """
+        SELECT album.* FROM cached_albums AS album
+        INNER JOIN cache_state AS state
+          ON state.namespace = album.namespace
+         AND state.active_generation = album.generation
+        WHERE album.namespace = :namespace
+        ORDER BY album.server_order
+        LIMIT :limit OFFSET :offset
+        """,
+    )
+    suspend fun albumsWindow(namespace: String, limit: Int, offset: Int): List<CachedAlbumEntity>
 
     @Query(
         """
@@ -152,6 +178,17 @@ interface LibraryCacheDao {
         """,
     )
     suspend fun activeAlbum(namespace: String, albumId: String): CachedAlbumEntity?
+
+    @Query(
+        """
+        SELECT track.* FROM cached_tracks AS track
+        INNER JOIN cache_state AS state
+          ON state.namespace = track.namespace
+         AND state.active_generation = track.generation
+        WHERE track.namespace = :namespace AND track.id = :trackId
+        """,
+    )
+    suspend fun activeTrack(namespace: String, trackId: String): CachedTrackEntity?
 
     @Query(
         """

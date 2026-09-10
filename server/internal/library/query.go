@@ -81,6 +81,7 @@ type Track struct {
 	BitsPerSample   *int    `json:"bits_per_sample,omitempty"`
 	Channels        *int    `json:"channels,omitempty"`
 	CoverID         *string `json:"cover_id,omitempty"`
+	AlbumTrackCount *int    `json:"album_track_count,omitempty"`
 }
 
 // QueryRepository reads the indexed library without exposing source paths.
@@ -419,13 +420,15 @@ func (r *QueryRepository) GetTrack(ctx context.Context, id string) (Track, error
 	if err := r.checkID(ctx, id); err != nil {
 		return track, err
 	}
-	track, err := scanTrack(r.db.QueryRowContext(ctx, trackSelect+` WHERE t.id = ?`, id))
+	var albumTrackCount sql.NullInt64
+	track, err := scanTrack(r.db.QueryRowContext(ctx, getTrackSelect+` WHERE t.id = ?`, id), &albumTrackCount)
 	if errors.Is(err, sql.ErrNoRows) {
 		return track, ErrNotFound
 	}
 	if err != nil {
 		return track, fmt.Errorf("get track: %w", err)
 	}
+	track.AlbumTrackCount = nullIntPointer(albumTrackCount)
 	return track, nil
 }
 
@@ -441,6 +444,10 @@ const trackJoins = `FROM tracks t
 	LEFT JOIN artists aa ON aa.id = t.album_artist_id`
 
 const trackSelect = `SELECT ` + trackColumns + ` ` + trackJoins
+
+const getTrackSelect = `SELECT ` + trackColumns + `,
+		CASE WHEN t.album_id IS NULL THEN NULL ELSE (SELECT COUNT(*) FROM tracks t2 WHERE t2.album_id = t.album_id) END
+		` + trackJoins
 
 var (
 	// ErrNotFound indicates that an opaque library ID has no visible item.

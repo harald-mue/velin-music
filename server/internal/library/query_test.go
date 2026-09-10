@@ -376,6 +376,9 @@ func TestQueryRepositoryGetsDetailsAndRejectsInvalidCursors(t *testing.T) {
 	if err != nil || track.Title != tracks.Items[0].Title || track.ArtistName == nil {
 		t.Fatalf("GetTrack() = %+v, error %v", track, err)
 	}
+	if track.AlbumTrackCount == nil || *track.AlbumTrackCount != 1 {
+		t.Fatalf("GetTrack().AlbumTrackCount = %v, want 1", track.AlbumTrackCount)
+	}
 	if _, err := repository.GetTrack(ctx, "missing"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("GetTrack(missing) error = %v, want ErrNotFound", err)
 	}

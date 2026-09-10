@@ -142,10 +142,16 @@ internal class ArtworkRequestPolicy(serverAddress: String) {
 }
 
 internal class ArtworkAuthorizationInterceptor(
-    private val policy: ArtworkRequestPolicy,
-    private val token: String,
+    private val policyProvider: () -> ArtworkRequestPolicy?,
+    private val tokenProvider: () -> String?,
 ) : Interceptor {
+    constructor(policy: ArtworkRequestPolicy, token: String) : this({ policy }, { token })
+
     override fun intercept(chain: Interceptor.Chain): Response {
+        val policy = policyProvider()
+            ?: throw IOException("Artwork credentials are unavailable.")
+        val token = tokenProvider()
+            ?: throw IOException("Artwork credentials are unavailable.")
         if (!policy.isAllowed(chain.request().url)) {
             throw IOException("Refusing artwork request outside the paired Velin server.")
         }

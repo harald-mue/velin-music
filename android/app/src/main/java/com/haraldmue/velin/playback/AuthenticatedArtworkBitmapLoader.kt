@@ -1,5 +1,6 @@
 package com.haraldmue.velin.playback
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -11,22 +12,31 @@ import com.haraldmue.velin.data.ArtworkAuthorizationInterceptor
 import com.haraldmue.velin.data.ArtworkHttpIdleConnections
 import com.haraldmue.velin.data.ArtworkHttpIdleKeepAliveSeconds
 import com.haraldmue.velin.data.ArtworkRequestPolicy
+import com.haraldmue.velin.data.CredentialStore
 import com.haraldmue.velin.data.DeviceCredentials
 import okhttp3.ConnectionPool
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.Closeable
+import java.io.File
 import java.io.IOException
+import java.security.MessageDigest
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 
 /** Loads notification/lock-screen artwork without placing credentials in media metadata. */
-internal class AuthenticatedArtworkBitmapLoader(
-    credentials: DeviceCredentials,
+internal class AuthenticatedArtworkBitmapLoader private constructor(
+    private val credentialsProvider: () -> DeviceCredentials?,
+    private val artworkCacheDirectory: File?,
 ) : BitmapLoader, Closeable {
-    private val policy = ArtworkRequestPolicy(credentials.serverUrl)
+    constructor(credentials: DeviceCredentials) : this({ credentials }, null)
+    constructor(context: Context, credentialStore: CredentialStore) : this(
+        credentialStore::load,
+        context.applicationContext.cacheDir.resolve("artwork"),
+    )
+
     private val client = OkHttpClient.Builder()
         .followRedirects(false)
         .followSslRedirects(false)
@@ -37,19 +47,26 @@ internal class AuthenticatedArtworkBitmapLoader(
         .connectionPool(
             ConnectionPool(ArtworkHttpIdleConnections, ArtworkHttpIdleKeepAliveSeconds, TimeUnit.SECONDS),
         )
-        .addInterceptor(ArtworkAuthorizationInterceptor(policy, credentials.token))
+        .addInterceptor(
+            ArtworkAuthorizationInterceptor(
+                { credentialsProvider()?.let { ArtworkRequestPolicy(it.serverUrl) } },
+                { credentialsProvider()?.token },
+            ),
+        )
         .build()
-    private val executor: ListeningExecutorService = MoreExecutors.listeningDecorator(
-        ThreadPoolExecutor(
-            0,
-            2,
-            ArtworkLoaderKeepAliveSeconds,
-            TimeUnit.SECONDS,
-            LinkedBlockingQueue(),
-        ) { runnable ->
-            Thread(runnable, "velin-artwork").apply { isDaemon = true }
-        },
-    )
+    private val executorPool = ThreadPoolExecutor(
+        2,
+        2,
+        ArtworkLoaderKeepAliveSeconds,
+        TimeUnit.SECONDS,
+        LinkedBlockingQueue(),
+    ) { runnable ->
+        Thread(runnable, "velin-artwork").apply { isDaemon = true }
+    }.apply {
+        allowCoreThreadTimeOut(true)
+    }
+    private val executor: ListeningExecutorService =
+        MoreExecutors.listeningDecorator(executorPool)
 
     override fun supportsMimeType(mimeType: String): Boolean = mimeType in SUPPORTED_MIME_TYPES
 
@@ -60,7 +77,14 @@ internal class AuthenticatedArtworkBitmapLoader(
         decodeBounded(readArtworkData(uri))
     }
 
-    fun loadEmbeddedArtworkData(uri: Uri): ListenableFuture<ByteArray> = executor.submit<ByteArray> {
+    fun loadEmbeddedArtworkData(
+        uri: Uri,
+        maxBytes: Int = MAX_EMBEDDED_ARTWORK_BYTES,
+    ): ListenableFuture<ByteArray> = executor.submit<ByteArray> {
+        require(maxBytes in 1..MAX_EMBEDDED_ARTWORK_BYTES) { "Invalid embedded artwork limit." }
+        val credentials = credentialsProvider()
+            ?: throw IOException("Artwork credentials are unavailable.")
+        val policy = ArtworkRequestPolicy(credentials.serverUrl)
         val url = uri.toString().toHttpUrlOrNull()
             ?: throw IOException("Invalid artwork URL.")
         if (!policy.isAllowed(url)) throw IOException("Artwork URL is outside the paired server.")
@@ -70,18 +94,27 @@ internal class AuthenticatedArtworkBitmapLoader(
         } else {
             url
         }
-        val data = readArtworkData(Uri.parse(embeddedUrl.toString()))
-        if (data.size > MAX_EMBEDDED_ARTWORK_BYTES) {
+        val embeddedUri = Uri.parse(embeddedUrl.toString())
+        val data = readCachedArtworkData(embeddedUri, maxBytes)
+            ?: readArtworkData(embeddedUri)
+        if (data.size > maxBytes) {
             throw IOException("Artwork is too large for embedded media metadata.")
         }
-        validateArtworkBounds(data, MAX_EMBEDDED_ARTWORK_BYTES)
+        validateArtworkBounds(data, maxBytes)
         data
+    }
+
+    private fun readCachedArtworkData(uri: Uri, maxBytes: Int): ByteArray? {
+        val directory = artworkCacheDirectory ?: return null
+        val file = directory.resolve("${artworkDiskCacheKey(uri.toString())}.1")
+        val size = file.length()
+        if (!file.isFile || size <= 0 || size > maxBytes) return null
+        return runCatching { file.readBytes().takeIf { it.size in 1..maxBytes } }.getOrNull()
     }
 
     private fun readArtworkData(uri: Uri): ByteArray {
         val url = uri.toString().toHttpUrlOrNull()
             ?: throw IOException("Invalid artwork URL.")
-        if (!policy.isAllowed(url)) throw IOException("Artwork URL is outside the paired server.")
         val response = client.newCall(
             Request.Builder()
                 .url(url)
@@ -149,6 +182,11 @@ internal class AuthenticatedArtworkBitmapLoader(
 }
 
 internal const val ArtworkLoaderKeepAliveSeconds = 1L
+
+internal fun artworkDiskCacheKey(url: String): String =
+    MessageDigest.getInstance("SHA-256")
+        .digest(url.toByteArray(Charsets.UTF_8))
+        .joinToString(separator = "") { byte -> "%02x".format(byte.toInt() and 0xff) }
 
 internal fun artworkSourceIsWithinLimits(
     byteCount: Int,

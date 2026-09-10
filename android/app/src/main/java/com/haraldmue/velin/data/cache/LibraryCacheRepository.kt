@@ -114,8 +114,19 @@ class LibraryCacheRepository(
     suspend fun album(albumId: String): Album? =
         dao.activeAlbum(namespace, albumId)?.toModel()
 
+    suspend fun track(trackId: String): Track? =
+        dao.activeTrack(namespace, trackId)?.toModel()
+
     suspend fun artist(artistId: String): Artist? =
         dao.activeArtist(namespace, artistId)?.toModel()
+
+    suspend fun albumsWindow(limit: Int, offset: Int): List<Album> =
+        dao.albumsWindow(namespace, limit.coerceAtLeast(1), offset.coerceAtLeast(0))
+            .map(CachedAlbumEntity::toModel)
+
+    suspend fun artistsWindow(limit: Int, offset: Int): List<Artist> =
+        dao.artistsWindow(namespace, limit.coerceAtLeast(1), offset.coerceAtLeast(0))
+            .map(CachedArtistEntity::toModel)
 
     suspend fun clear() {
         syncMutex.withLock {

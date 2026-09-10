@@ -27,8 +27,14 @@ class AutoLibraryCatalogTest {
     @Test
     fun mediaIdsAreStableAndPrefixed() {
         assertEquals(AutoMediaId.Root, parseAutoMediaId(AutoRootId))
+        assertEquals(AutoMediaId.RecentlyAdded, parseAutoMediaId(AutoRecentlyAddedId))
+        assertEquals(AutoMediaId.Discover, parseAutoMediaId(AutoDiscoverId))
         assertEquals(AutoMediaId.Albums, parseAutoMediaId(AutoAlbumsId))
         assertEquals(AutoMediaId.Artists, parseAutoMediaId(AutoArtistsId))
+        assertEquals(
+            listOf(AutoRootId, AutoRecentlyAddedId, AutoDiscoverId, AutoAlbumsId, AutoArtistsId),
+            AutoBrowsableCategoryIds,
+        )
         assertEquals(AutoMediaId.Album("album-1"), parseAutoMediaId(albumMediaId("album-1")))
         assertEquals(AutoMediaId.Artist("artist-1"), parseAutoMediaId(artistMediaId("artist-1")))
         assertEquals(AutoMediaId.Track("track-1"), parseAutoMediaId(trackMediaId("track-1")))
@@ -57,12 +63,88 @@ class AutoLibraryCatalogTest {
         assertEquals(true, children[0].mediaMetadata.isBrowsable)
         assertEquals("Artists", children[1].mediaMetadata.title.toString())
         assertTrue(children.none { it.mediaId.contains("recent", ignoreCase = true) })
+        assertTrue(children.none { it.mediaId.contains("discover", ignoreCase = true) })
         assertEquals(
             androidx.media3.session.MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
             root.mediaMetadata.extras?.getInt(
                 androidx.media3.session.MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE,
             ),
         )
+    }
+
+    @Test
+    fun rootPrependsRoomHomeShelvesWithoutLibraryCounts() = runTest {
+        val recent = listOf(homeAlbum("album-recent", "Newest"))
+        val discover = listOf(
+            homeAlbum("album-recent", "Newest"),
+            homeAlbum("album-discover", "Deep cut"),
+        )
+        val catalog = AutoLibraryCatalog(
+            FakeLibraryGateway(),
+            artworkPolicy(),
+            FakeAutoHomeAlbums(recent, discover),
+        )
+
+        val children = catalog.children(AutoRootId, 0, 50)
+        val recentFolder = catalog.item(AutoRecentlyAddedId)
+        val discoverFolder = catalog.item(AutoDiscoverId)
+        val recentAlbums = catalog.children(AutoRecentlyAddedId, 0, 50)
+        val discoverAlbums = catalog.children(AutoDiscoverId, 0, 50)
+
+        assertEquals(
+            listOf(AutoRecentlyAddedId, AutoDiscoverId, AutoAlbumsId, AutoArtistsId),
+            children.map { it.mediaId },
+        )
+        assertEquals("Recent", children[0].mediaMetadata.title.toString())
+        assertEquals("Discover", children[1].mediaMetadata.title.toString())
+        assertEquals(false, recentFolder.mediaMetadata.isPlayable)
+        assertEquals(true, recentFolder.mediaMetadata.isBrowsable)
+        assertEquals(
+            androidx.media3.session.MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+            recentFolder.mediaMetadata.extras?.getInt(
+                androidx.media3.session.MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE,
+            ),
+        )
+        assertEquals(listOf(albumMediaId("album-recent")), recentAlbums.map { it.mediaId })
+        assertEquals(
+            listOf(albumMediaId("album-recent"), albumMediaId("album-discover")),
+            discoverAlbums.map { it.mediaId },
+        )
+        assertEquals("Newest", discoverAlbums[0].mediaMetadata.title.toString())
+        assertEquals("Deep cut", discoverAlbums[1].mediaMetadata.title.toString())
+        assertEquals(true, discoverFolder.mediaMetadata.isBrowsable)
+    }
+
+    @Test
+    fun homeShelvesKeepDiscoverIndependentOfRecentlyAdded() {
+        val recent = listOf(homeAlbum("album-1", "A"), homeAlbum("album-2", "B"))
+        val discovery = listOf(
+            homeAlbum("album-2", "B"),
+            homeAlbum("album-3", "C"),
+            homeAlbum("album-1", "A"),
+        )
+        val (shownRecent, shownDiscover) = autoHomeShelves(recent, discovery)
+        assertEquals(listOf("album-1", "album-2"), shownRecent.map { it.id })
+        assertEquals(listOf("album-2", "album-3", "album-1"), shownDiscover.map { it.id })
+    }
+
+    @Test
+    fun rootKeepsDiscoverWhenEveryAlbumIsAlsoRecentlyAdded() = runTest {
+        val albums = listOf(homeAlbum("album-1", "A"), homeAlbum("album-2", "B"))
+        val catalog = AutoLibraryCatalog(
+            FakeLibraryGateway(),
+            artworkPolicy(),
+            FakeAutoHomeAlbums(albums, albums),
+        )
+
+        val children = catalog.children(AutoRootId, 0, 50)
+        val discoverAlbums = catalog.children(AutoDiscoverId, 0, 50)
+
+        assertEquals(
+            listOf(AutoRecentlyAddedId, AutoDiscoverId, AutoAlbumsId, AutoArtistsId),
+            children.map { it.mediaId },
+        )
+        assertEquals(listOf(albumMediaId("album-1"), albumMediaId("album-2")), discoverAlbums.map { it.mediaId })
     }
 
     @Test
@@ -78,16 +160,50 @@ class AutoLibraryCatalogTest {
         assertEquals("Mezzanine", albums.single().mediaMetadata.title.toString())
         assertEquals("Massive Attack", albums.single().mediaMetadata.artist.toString())
         assertEquals(true, albums.single().mediaMetadata.isBrowsable)
-        assertEquals(true, albums.single().mediaMetadata.isPlayable)
+        assertEquals(false, albums.single().mediaMetadata.isPlayable)
         assertEquals(
-            "https://velin.example/api/v1/covers/cover-1/256",
+            "content://com.haraldmue.velin.artwork/covers/cover-1/256",
             albums.single().mediaMetadata.artworkUri.toString(),
         )
         assertEquals(listOf(artistMediaId("artist-1")), artists.map { it.mediaId })
         assertEquals("Massive Attack", artists.single().mediaMetadata.title.toString())
         assertEquals(true, artist.mediaMetadata.isBrowsable)
-        assertEquals(true, album.mediaMetadata.isPlayable)
+        assertEquals(false, album.mediaMetadata.isPlayable)
+        assertEquals(false, artist.mediaMetadata.isPlayable)
         assertNull(album.localConfiguration)
+        assertEquals(
+            androidx.media3.session.MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
+            catalog.item(AutoAlbumsId).mediaMetadata.extras?.getInt(
+                androidx.media3.session.MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE,
+            ),
+        )
+    }
+
+    @Test
+    fun albumsAndArtistsUseRoomWhenTheSnapshotIsPresent() = runTest {
+        val cachedAlbums = listOf(
+            homeAlbum("album-room", "Room album"),
+            homeAlbum("album-two", "Second"),
+        )
+        val cachedArtists = listOf(Artist("artist-room", "Room artist", albumCount = 1, trackCount = 1))
+        val catalog = AutoLibraryCatalog(
+            FakeLibraryGateway(unavailable = true),
+            artworkPolicy(),
+            FakeAutoHomeAlbums(
+                recentlyAdded = emptyList(),
+                discovery = emptyList(),
+                libraryAlbums = cachedAlbums,
+                libraryArtists = cachedArtists,
+            ),
+        )
+
+        val albums = catalog.children(AutoAlbumsId, 0, 50)
+        val artists = catalog.children(AutoArtistsId, 0, 50)
+        val secondPage = catalog.children(AutoAlbumsId, 1, 1)
+
+        assertEquals(listOf(albumMediaId("album-room"), albumMediaId("album-two")), albums.map { it.mediaId })
+        assertEquals(listOf(artistMediaId("artist-room")), artists.map { it.mediaId })
+        assertEquals(listOf(albumMediaId("album-two")), secondPage.map { it.mediaId })
     }
 
     @Test
@@ -112,6 +228,42 @@ class AutoLibraryCatalogTest {
             assertFalse(track.mediaId.contains("secret-token"))
             assertFalse(track.mediaMetadata.toString().contains("secret-token"))
         }
+    }
+
+    @Test
+    fun albumChildrenUseRoomWhenTheAlbumIsCached() = runTest {
+        val cached = homeAlbum("album-1", "Mezzanine")
+        val tracks = listOf(
+            Track(
+                id = "t-cached",
+                title = "Cached",
+                format = "flac",
+                artistName = "Massive Attack",
+                albumTitle = "Mezzanine",
+                durationMs = 180_000,
+                trackNumber = 1,
+                discNumber = 1,
+                artistId = "artist-1",
+                albumId = "album-1",
+                coverId = "cover-1",
+            ),
+        )
+        val catalog = AutoLibraryCatalog(
+            FakeLibraryGateway(unavailable = true),
+            artworkPolicy(),
+            FakeAutoHomeAlbums(
+                recentlyAdded = listOf(cached),
+                discovery = emptyList(),
+                tracksByAlbum = mapOf("album-1" to tracks),
+            ),
+        )
+
+        val children = catalog.children(albumMediaId("album-1"), 0, 50)
+        val item = catalog.item(albumMediaId("album-1"))
+
+        assertEquals(listOf(trackMediaId("t-cached")), children.map { it.mediaId })
+        assertEquals("Mezzanine", item.mediaMetadata.title.toString())
+        assertEquals(false, item.mediaMetadata.isPlayable)
     }
 
     @Test
@@ -186,6 +338,40 @@ class AutoLibraryCatalogTest {
     }
 
     private fun artworkPolicy() = ArtworkRequestPolicy("https://velin.example")
+
+    private fun homeAlbum(id: String, title: String) = Album(
+        id = id,
+        title = title,
+        artistName = "Artist",
+        year = 2020,
+        coverId = "cover-1",
+        trackCount = 8,
+    )
+}
+
+private class FakeAutoHomeAlbums(
+    private val recentlyAdded: List<Album>,
+    private val discovery: List<Album>,
+    private val libraryAlbums: List<Album> = emptyList(),
+    private val libraryArtists: List<Artist> = emptyList(),
+    private val tracksByAlbum: Map<String, List<Track>> = emptyMap(),
+    private val tracksByArtist: Map<String, List<Track>> = emptyMap(),
+    private val artists: Map<String, Artist> = emptyMap(),
+) : AutoHomeAlbums {
+    private val albums = (recentlyAdded + discovery + libraryAlbums).associateBy(Album::id)
+    private val tracks = (tracksByAlbum.values + tracksByArtist.values).flatten().associateBy(Track::id)
+
+    override suspend fun recentlyAdded(limit: Int): List<Album> = recentlyAdded.take(limit)
+    override suspend fun discovery(limit: Int): List<Album> = discovery.take(limit)
+    override suspend fun albums(limit: Int, offset: Int): List<Album> =
+        libraryAlbums.drop(offset.coerceAtLeast(0)).take(limit.coerceAtLeast(0))
+    override suspend fun artists(limit: Int, offset: Int): List<Artist> =
+        libraryArtists.drop(offset.coerceAtLeast(0)).take(limit.coerceAtLeast(0))
+    override suspend fun album(albumId: String): Album? = albums[albumId]
+    override suspend fun artist(artistId: String): Artist? = artists[artistId]
+    override suspend fun albumTracks(albumId: String): List<Track> = tracksByAlbum[albumId].orEmpty()
+    override suspend fun artistTracks(artistId: String): List<Track> = tracksByArtist[artistId].orEmpty()
+    override suspend fun track(trackId: String): Track? = tracks[trackId]
 }
 
 @RunWith(RobolectricTestRunner::class)
@@ -212,6 +398,15 @@ class AutoPlaybackResolverTest {
     }
 
     @Test
+    fun homeSectionsCannotBePlayed() = runTest {
+        val resolver = AutoPlaybackResolver(FakeLibraryGateway(), PlaybackMediaItemFactory(testCredentials()))
+        val recent = runCatching { resolver.queueFor(AutoRecentlyAddedId) }.exceptionOrNull()
+        val discover = runCatching { resolver.queueFor(AutoDiscoverId) }.exceptionOrNull()
+        assertEquals("This library section cannot be played.", recent?.message)
+        assertEquals("This library section cannot be played.", discover?.message)
+    }
+
+    @Test
     fun playingAnAlbumStartsAtTheFirstTrack() = runTest {
         val resolver = AutoPlaybackResolver(FakeLibraryGateway(), PlaybackMediaItemFactory(testCredentials()))
 
@@ -220,6 +415,42 @@ class AutoPlaybackResolverTest {
         assertEquals(0, queue.startIndex)
         assertEquals(3, queue.items.size)
         assertEquals("t-angel", queue.items.first().mediaId)
+    }
+
+    @Test
+    fun playingACachedAlbumDoesNotNeedTheServer() = runTest {
+        val album = Album("album-1", "Mezzanine", "Massive Attack", 1998, "cover-1", 3)
+        val tracks = listOf(
+            Track(
+                id = "t-cached",
+                title = "Cached",
+                format = "flac",
+                artistName = "Massive Attack",
+                albumTitle = "Mezzanine",
+                durationMs = 180_000,
+                trackNumber = 1,
+                discNumber = 1,
+                artistId = "artist-1",
+                albumId = "album-1",
+                coverId = "cover-1",
+            ),
+        )
+        val resolver = AutoPlaybackResolver(
+            FakeLibraryGateway(unavailable = true),
+            PlaybackMediaItemFactory(testCredentials()),
+            FakeAutoHomeAlbums(
+                recentlyAdded = listOf(album),
+                discovery = emptyList(),
+                tracksByAlbum = mapOf("album-1" to tracks),
+            ),
+        )
+
+        val queue = resolver.queueFor(albumMediaId("album-1"))
+        val item = resolver.playableTrack(trackMediaId("t-cached"))
+
+        assertEquals(listOf("t-cached"), queue.items.map { it.mediaId })
+        assertEquals("t-cached", item.mediaId)
+        assertTrue(item.localConfiguration?.uri.toString().endsWith("/stream"))
     }
 
     @Test

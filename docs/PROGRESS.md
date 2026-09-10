@@ -1,12 +1,12 @@
 # Velin Development Progress
 
-Last updated: 2026-09-08
+Last updated: 2026-09-10
 
 ## Current status
 
 The Go executable provides storage, indexing, authentication, administration, protected library APIs, artwork, and original-format streaming. The native Android project builds with Kotlin, Compose, and API 37 and provides a graphite visual system with Home/Queue/Library navigation, in-library search, and adaptive portrait/landscape layouts.
 
-Android has exact summary counts, a revision/count-verified Room snapshot cache, PagingSource-backed library lists, bounded **Recently added** and **Discover** Home sections, and cached album detail when active. Search, artist detail, track detail, and Android Auto remain network-backed. Bounded visible-result/album queues, album/artist add-to-queue, queue reordering, a device-local saved-queue slot, and track-detail enqueue actions are wired through Media3, including authenticated artwork, Now Playing, seeking, automatic advance, previous/next, queue inspection/removal, shuffle, and repeat. Playback is owned by an exported `MediaLibraryService` that exposes the Android Auto media library (Albums and Artists). The server prewarms bounded 256/512 px artwork variants in one low-pressure worker.
+Android has exact summary counts, a revision/count-verified Room snapshot cache, PagingSource-backed library lists, bounded **Recently added** and **Discover** Home sections, and cached album detail when active. Search, artist detail, and track detail remain network-backed. Android Auto Albums and Artists read the active Room snapshot (list for Albums; network only if the snapshot has no rows); Auto search stays network-backed. Auto root **Recent** and Discover read the Room home shelves without library counts and stay visible as separate tabs even when they share albums. Opening a cached album or artist in Auto uses Room tracks. Browse grids embed authenticated covers. Bounded visible-result/album queues, album/artist add-to-queue, queue reordering, a device-local saved-queue slot, and track-detail enqueue actions are wired through Media3, including authenticated artwork, Now Playing, seeking, automatic advance, previous/next, queue inspection/removal, shuffle, and repeat. Playback is owned by an exported `MediaLibraryService` that exposes the Android Auto media library (home shelves plus Albums and Artists). The server prewarms bounded 256/512 px artwork variants in one low-pressure worker.
 
 ## Current milestone
 
@@ -63,10 +63,10 @@ Android has exact summary counts, a revision/count-verified Room snapshot cache,
 - [x] Track-detail Play next and Add to queue actions, plus album/artist Add to queue, with bounded Media3 queue insertion.
 - [x] Media3-backed queue screen with current-item highlighting, direct selection, safe removal, long-press drag reorder (shuffle off), shuffle, repeat Off/All/One, Clear, and one device-local Save/Load slot.
 - [x] ExoPlayer buffering of 60–120 seconds with 120-second stream read timeouts; network-loss cancellation applies on devices, not emulators.
-- [x] Android Auto media browse hierarchy for Albums and Artists, paginated children, FTS track search, and album-queue playback through the shared Media3 session.
+- [x] Android Auto media browse hierarchy with Room Recent and Discover folders (no library counts), then Albums and Artists, paginated children, FTS track search, and album-queue playback through the shared Media3 session.
 - [x] App-private Room v1 catalog cache namespaced by SHA-256 of normalized server URL, NUL, and device ID, with the schema exported and the current namespace cleared on disconnect.
 - [x] Complete 200-item-page snapshot downloads into staging generations, pre/post revision and exact-count verification, atomic activation, and retention of the previous snapshot after incomplete refreshes.
-- [x] Room PagingSource-backed artist/album/track lists with page size 50, cached Home curation, and cached album detail when active; search, artist detail, track detail, and Android Auto remain network-backed.
+- [x] Room PagingSource-backed artist/album/track lists with page size 50, cached Home curation, and cached album detail when active; search, artist detail, and track detail remain network-backed; Android Auto Albums and Artists read Room while search stays network-backed; Auto home shelves and cached album/artist children read Room.
 - [x] Empty-cache-only summary/shelf bootstrap and snapshot retries limited to transport failures plus HTTP 408/429/500/502/503/504 for at most three attempts.
 - [x] One cancellable/coalescing artwork-prewarm worker triggered after startup and successful scan work, limited per pass to deterministic 1,024 referenced covers, 256/512 px variants, and a 10 ms pause after each variant.
 
@@ -131,6 +131,16 @@ Android:
 Deploy the new server image, then measure Room-backed scrolling, album/artist reopening, first-cover latency before and after server prewarming, transferred artwork bytes, and memory against the physical 2,096-track library. Repeat snapshot and startup measurements against the generated 100,000-track fixture. Do not infer unmeasured performance improvements.
 
 ## Recent work log
+
+### 2026-09-10
+
+- Android Auto browse tiles use exported `content://com.haraldmue.velin.artwork/covers/{id}/256` because Gearhead fetches `iconUri` itself and does not render embedded browse bitmaps. Fetched covers are written into the Coil disk cache instead of leftover temp files. Snapshot changes notify Auto for Albums and Artists as well as root/Recent/Discover. The Auto recency tab is labeled **Recent**; phone Home stays **Recently added**. Auto album and artist items are browsable folders; Albums is a list. A tap loads Room tracks when the snapshot has that album.
+
+### 2026-09-09
+
+- Android Auto's browse root now prepends the same Room recently-added and Discover album shelves as phone Home (without artist/album/track counts). The Auto tab label is **Recent**. Albums, Artists, and search stay network-backed. Empty snapshot shelves are omitted; Auto does not start a snapshot sync from the playback service.
+- `PlaybackService` reloads paired library clients when the Keystore token changes while Android Auto stays bound, and notifies the browse tree when the Room snapshot activates so DHU is not stuck on an empty Albums/Artists-only root.
+- Android Auto Discover stays as its own tab even when those albums also appear under Recent. Browse album grids use `content://com.haraldmue.velin.artwork/covers/{id}/256` because Auto fetches `iconUri` itself and ignores embedded browse bitmaps. Track detail "Go to album" uses indexed `album_track_count`, not tag totals.
 
 ### 2026-09-08
 

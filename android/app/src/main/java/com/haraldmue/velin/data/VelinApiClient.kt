@@ -326,6 +326,7 @@ class VelinApiClient(
             bitsPerSample = json.optionalInt("bits_per_sample"),
             channels = json.optionalInt("channels"),
             coverId = json.optionalString("cover_id"),
+            albumTrackCount = json.optionalInt("album_track_count"),
         )
     }
 

@@ -83,7 +83,7 @@ Authentication precedes protected library, artwork, and streaming endpoints so n
 - **Complete:** album-specific queues in disc/track order, loaded across bounded cursor pages, with Play album and Add to queue
 - **Complete:** Media3-backed queue display, Clear, one device-local Save/Load slot (grey unavailable IDs, save drops them), direct selection, safe item removal, long-press drag reorder (shuffle off), shuffle, repeat Off/All/One, track-detail Play next / Add to queue, and album/artist Add to queue
 - **Complete:** ExoPlayer buffering of 60–120 seconds with 120-second stream reads; device network-loss cancellation does not run in the emulator
-- **Complete:** Android Auto media-app declaration and server-backed Albums/Artists browse tree with paginated children, track search, and album-queue playback through the shared session
+- **Complete:** Android Auto media-app declaration; browse root uses Room Recent and Discover shelves (no library counts) plus server-backed Albums/Artists with paginated children, FTS track search, Room album/artist children when cached, and album-queue playback through the shared session
 - **Partial:** seeking is complete; lock-screen, Bluetooth, headset controls, Android Auto in-car browse/playback, and long-running background behavior require broader device validation
 - **Complete:** authorization headers for original FLAC/MP3 streams
 

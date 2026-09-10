@@ -28,14 +28,16 @@ import kotlin.coroutines.resumeWithException
 
 internal class AutoLibrarySessionCallback(
     private val scope: CoroutineScope,
-    private val catalog: AutoLibraryCatalog?,
-    private val resolver: AutoPlaybackResolver?,
-    private val artworkLoader: AuthenticatedArtworkBitmapLoader?,
+    private val catalog: () -> AutoLibraryCatalog?,
+    private val resolver: () -> AutoPlaybackResolver?,
+    private val artworkLoader: () -> AuthenticatedArtworkBitmapLoader?,
+    private val beforeLibraryAccess: () -> Unit = {},
 ) : MediaLibrarySession.Callback {
     override fun onConnect(
         session: MediaSession,
         controller: MediaSession.ControllerInfo,
     ): ConnectionResult {
+        beforeLibraryAccess()
         val isExternalMediaSurface =
             session.isAutomotiveController(controller) ||
                 session.isAutoCompanionController(controller) ||
@@ -57,6 +59,7 @@ internal class AutoLibrarySessionCallback(
     ): ListenableFuture<LibraryResult<Void>> {
         // Default Callback returns NOT_SUPPORTED. Android Auto subscribes to the root
         // and waits; without success it never leaves the loading spinner.
+        beforeLibraryAccess()
         return Futures.immediateFuture(LibraryResult.ofVoid())
     }
 
@@ -64,7 +67,10 @@ internal class AutoLibrarySessionCallback(
         session: MediaLibrarySession,
         browser: MediaSession.ControllerInfo,
         params: MediaLibraryService.LibraryParams?,
-    ): ListenableFuture<LibraryResult<MediaItem>> = immediateLibraryRoot(catalog, params)
+    ): ListenableFuture<LibraryResult<MediaItem>> {
+        beforeLibraryAccess()
+        return immediateLibraryRoot(catalog(), params)
+    }
 
     override fun onGetItem(
         session: MediaLibrarySession,
@@ -72,7 +78,7 @@ internal class AutoLibrarySessionCallback(
         mediaId: String,
     ): ListenableFuture<LibraryResult<MediaItem>> = libraryFuture {
         withTimeout(LibraryBrowseTimeoutMs) {
-            LibraryResult.ofItem(requireCatalog().item(mediaId), null)
+            LibraryResult.ofItem(withBrowseArtwork(requireCatalog().item(mediaId)), null)
         }
     }
 
@@ -85,7 +91,10 @@ internal class AutoLibrarySessionCallback(
         params: MediaLibraryService.LibraryParams?,
     ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = libraryFuture {
         withTimeout(LibraryBrowseTimeoutMs) {
-            LibraryResult.ofItemList(requireCatalog().children(parentId, page, pageSize), params)
+            LibraryResult.ofItemList(
+                withBrowseArtwork(requireCatalog().children(parentId, page, pageSize)),
+                params,
+            )
         }
     }
 
@@ -112,7 +121,10 @@ internal class AutoLibrarySessionCallback(
         params: MediaLibraryService.LibraryParams?,
     ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = libraryFuture {
         withTimeout(LibraryBrowseTimeoutMs) {
-            LibraryResult.ofItemList(requireCatalog().search(query, page, pageSize), params)
+            LibraryResult.ofItemList(
+                withBrowseArtwork(requireCatalog().search(query, page, pageSize)),
+                params,
+            )
         }
     }
 
@@ -164,11 +176,21 @@ internal class AutoLibrarySessionCallback(
         }
     }
 
+    private suspend fun withBrowseArtwork(items: List<MediaItem>): List<MediaItem> {
+        val loader = artworkLoader() ?: return items
+        return embedBrowseArtwork(items) { uri ->
+            await(loader.loadEmbeddedArtworkData(uri, MaxEmbeddedBrowseArtworkBytes))
+        }
+    }
+
+    private suspend fun withBrowseArtwork(item: MediaItem): MediaItem =
+        withBrowseArtwork(listOf(item)).single()
+
     private suspend fun embedCurrentArtwork(
         items: List<MediaItem>,
         currentIndex: Int,
     ): List<MediaItem> {
-        val loader = artworkLoader ?: return items
+        val loader = artworkLoader() ?: return items
         if (currentIndex !in items.indices) return items
         val item = items[currentIndex]
         if (item.mediaMetadata.artworkData != null) {
@@ -181,6 +203,7 @@ internal class AutoLibrarySessionCallback(
             }
         }
         val artworkUri = item.mediaMetadata.artworkUri ?: return items
+        if (artworkUri.scheme == "content") return items
         val data = try {
             await(loader.loadEmbeddedArtworkData(artworkUri))
         } catch (cancelled: CancellationException) {
@@ -194,10 +217,10 @@ internal class AutoLibrarySessionCallback(
     }
 
     private fun requireCatalog(): AutoLibraryCatalog =
-        catalog ?: throw UnpairedLibraryException()
+        catalog() ?: throw UnpairedLibraryException()
 
     private fun requireResolver(): AutoPlaybackResolver =
-        resolver ?: throw UnpairedLibraryException()
+        resolver() ?: throw UnpairedLibraryException()
 
     private suspend fun <T> await(future: ListenableFuture<T>): T =
         suspendCancellableCoroutine { continuation ->
@@ -216,6 +239,7 @@ internal class AutoLibrarySessionCallback(
         val future = SettableFuture.create<LibraryResult<T>>()
         val job = scope.launch {
             val result = try {
+                beforeLibraryAccess()
                 block()
             } catch (error: TimeoutCancellationException) {
                 libraryError<T>(error)
@@ -234,6 +258,7 @@ internal class AutoLibrarySessionCallback(
         val future = SettableFuture.create<T>()
         val job = scope.launch {
             try {
+                beforeLibraryAccess()
                 future.set(block())
             } catch (error: TimeoutCancellationException) {
                 future.setException(error)

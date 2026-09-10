@@ -1,11 +1,23 @@
 package com.haraldmue.velin.playback
 
 internal const val AutoRootId = "root"
+internal const val AutoRecentlyAddedId = "category:recently-added"
+internal const val AutoDiscoverId = "category:discover"
 internal const val AutoAlbumsId = "category:albums"
 internal const val AutoArtistsId = "category:artists"
 
+internal val AutoBrowsableCategoryIds = listOf(
+    AutoRootId,
+    AutoRecentlyAddedId,
+    AutoDiscoverId,
+    AutoAlbumsId,
+    AutoArtistsId,
+)
+
 internal sealed class AutoMediaId {
     data object Root : AutoMediaId()
+    data object RecentlyAdded : AutoMediaId()
+    data object Discover : AutoMediaId()
     data object Albums : AutoMediaId()
     data object Artists : AutoMediaId()
     data class Album(val id: String) : AutoMediaId()
@@ -23,6 +35,8 @@ internal fun parseAutoMediaId(mediaId: String): AutoMediaId? {
     val value = mediaId.trim()
     return when {
         value == AutoRootId -> AutoMediaId.Root
+        value == AutoRecentlyAddedId -> AutoMediaId.RecentlyAdded
+        value == AutoDiscoverId -> AutoMediaId.Discover
         value == AutoAlbumsId -> AutoMediaId.Albums
         value == AutoArtistsId -> AutoMediaId.Artists
         value.startsWith("album:") -> opaqueSuffix(value, "album:")?.let(AutoMediaId::Album)

@@ -37,6 +37,12 @@
             </intent-filter>
         </service>
 
+        <provider
+            android:name=".playback.ArtworkContentProvider"
+            android:authorities="com.haraldmue.velin.artwork"
+            android:exported="true"
+            android:grantUriPermissions="true" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true">

@@ -428,7 +428,7 @@ Velin already owned playback in a Media3 `MediaSessionService` consumed by Compo
 
 ### Decision
 
-Migrate the existing `PlaybackService` to Media3 `MediaLibraryService` with a `MediaLibrarySession`. Keep a single ExoPlayer and a single queue. Expose only server-backed Albums and Artists (plus FTS track search). Resolve Android Auto play requests through the existing authenticated stream data source. Export the service with the Media3 library-service and platform MediaBrowser intent filters, and declare the Android Auto media capability. Do not add an Android Automotive OS module or a custom Auto UI.
+Migrate the existing `PlaybackService` to Media3 `MediaLibraryService` with a `MediaLibrarySession`. Keep a single ExoPlayer and a single queue. Expose Room Recent and Discover album folders at the Auto root (same bounded Home shelves as the phone, without library counts; Auto labels the recency folder **Recent**), then Room Albums and Artists plus FTS track search. Snapshot activation notifies Auto for root, Recent, Discover, Albums, and Artists. Album and artist browse items are folders, not immediately playable; children and play queues use Room when that album or artist is in the active snapshot. Resolve Android Auto play requests through the existing authenticated stream data source. Export the service with the Media3 library-service and platform MediaBrowser intent filters, and declare the Android Auto media capability. Do not add an Android Automotive OS module or a custom Auto UI.
 
 ### Rationale
 
@@ -436,7 +436,7 @@ Migrate the existing `PlaybackService` to Media3 `MediaLibraryService` with a `M
 
 ### Consequences
 
-The playback service is exported. Tokens must never appear in media IDs, metadata, or URLs; authorization remains an in-memory OkHttp/Media3 header. Recently Played/Added are omitted until the server provides those collections. Playback resumption after process death remains unimplemented. Android Automotive OS is still out of scope.
+The playback service is exported. Tokens must never appear in media IDs, metadata, or URLs; authorization remains an in-memory OkHttp/Media3 header. Auto home shelves read the active Room snapshot and do not invent Recently Played. Opening a cached album or artist in Auto reads Room tracks so browse does not depend on a live album-tracks request. Auto shows Recent and Discover as separate tabs without de-duplicating across them. Browse album grids expose `content://com.haraldmue.velin.artwork/covers/{id}/{size}` because Android Auto fetches `iconUri` itself and cannot authenticate HTTP cover URLs; the provider requires pairing, serves Coil cache first, and writes misses into that cache. Because Android Auto keeps the service bound, pairing/`stopService` cannot recreate it; browse callbacks reload Keystore credentials and `notifyChildrenChanged` on root, Recent, Discover, Albums, and Artists after snapshot activation. Playback resumption after process death remains unimplemented. Android Automotive OS is still out of scope.
 
 ## ADR-021 — One device-local saved playback queue
 
@@ -580,7 +580,7 @@ Network-backed cursor accumulation still made repeat launches dependent on conne
 
 ### Decision
 
-Persist public artist, album, and track models in app-private Room generations. Namespace rows by SHA-256 of normalized server URL, NUL, and device ID; exclude the bearer token. Download complete collections in 200-item pages to a staging generation, compare summary revisions before and after, verify all three downloaded counts against the first summary, and atomically activate only a complete matching generation. Keep the previous active generation on failure or mismatch. Serve library lists through Room PagingSource pages of 50, Home through bounded cached queries, and album detail from Room when active. Use the network directly for search, artist detail, track detail, and Android Auto. Bootstrap summary plus the 16-album shelf only when no active snapshot exists. Retry snapshot requests at most three times and only for transport failures or HTTP 408, 429, 500, 502, 503, and 504. Delete the current namespace on disconnect and export each Room schema version.
+Persist public artist, album, and track models in app-private Room generations. Namespace rows by SHA-256 of normalized server URL, NUL, and device ID; exclude the bearer token. Download complete collections in 200-item pages to a staging generation, compare summary revisions before and after, verify all three downloaded counts against the first summary, and atomically activate only a complete matching generation. Keep the previous active generation on failure or mismatch. Serve library lists through Room PagingSource pages of 50, Home through bounded cached queries, and album detail from Room when active. Use the network directly for search, artist detail, track detail, and Android Auto Albums/Artists/search; Auto root Recent and Discover read the active Room snapshot, and opening a cached album or artist in Auto uses those Room tracks. Bootstrap summary plus the 16-album shelf only when no active snapshot exists. Retry snapshot requests at most three times and only for transport failures or HTTP 408, 429, 500, 502, 503, and 504. Delete the current namespace on disconnect and export each Room schema version.
 
 ### Consequences
 

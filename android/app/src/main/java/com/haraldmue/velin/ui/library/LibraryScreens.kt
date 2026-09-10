@@ -35,6 +35,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
@@ -665,7 +666,7 @@ fun TrackDetailScreen(
                                                 artistName = track.albumArtistName ?: track.artistName,
                                                 year = null,
                                                 coverId = track.coverId,
-                                                trackCount = track.totalTracks ?: 0,
+                                                trackCount = track.albumTrackCount ?: 0,
                                             ),
                                         )
                                     }
@@ -702,6 +703,31 @@ fun TrackDetailScreen(
                                 modifier = Modifier.weight(1f),
                             ) {
                                 Text("Add to queue")
+                            }
+                        }
+                        if (track.canOpenAlbumWithMoreTracks()) {
+                            val albumId = track.albumId
+                            val albumTitle = track.albumTitle
+                            if (albumId != null && albumTitle != null) {
+                                OutlinedButton(
+                                    onClick = {
+                                        onOpenAlbum(
+                                            Album(
+                                                id = albumId,
+                                                title = albumTitle,
+                                                artistName = track.albumArtistName ?: track.artistName,
+                                                year = null,
+                                                coverId = track.coverId,
+                                                trackCount = track.albumTrackCount ?: 0,
+                                            ),
+                                        )
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Icon(Icons.Rounded.Album, contentDescription = null)
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Go to album")
+                                }
                             }
                         }
                     }

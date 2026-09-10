@@ -64,6 +64,7 @@ data class TrackDetail(
     val bitsPerSample: Int?,
     val channels: Int?,
     val coverId: String?,
+    val albumTrackCount: Int? = null,
 ) {
     fun toTrack(): Track = Track(
         id = id,
@@ -78,6 +79,9 @@ data class TrackDetail(
         albumId = albumId,
         coverId = coverId,
     )
+
+    fun canOpenAlbumWithMoreTracks(): Boolean =
+        !albumId.isNullOrBlank() && !albumTitle.isNullOrBlank() && (albumTrackCount ?: 0) > 1
 }
 
 data class Page<T>(

@@ -2,9 +2,9 @@ package com.haraldmue.velin.playback
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ClearAll
 import androidx.compose.material.icons.rounded.DeleteOutline
@@ -75,13 +74,12 @@ fun PlaybackQueueScreen(
                     trackColor = MaterialTheme.colorScheme.outlineVariant,
                 )
             }
-            Row(
+            FlowRow(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(bottom = 12.dp),
+                    .padding(bottom = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 FilterChip(
                     selected = state.shuffleEnabled,
@@ -97,6 +95,14 @@ fun PlaybackQueueScreen(
                     label = { Text("Repeat ${repeatModeLabel(state.repeatMode)}") },
                     leadingIcon = { Icon(Icons.Rounded.Repeat, contentDescription = null) },
                 )
+            }
+            FlowRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 FilterChip(
                     selected = false,
                     onClick = onSave,
@@ -120,14 +126,7 @@ fun PlaybackQueueScreen(
                 )
             }
         }
-        if (state.queue.isEmpty()) {
-            item {
-                Text(
-                    text = "The playback queue is empty.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        } else {
+        if (state.queue.isNotEmpty()) {
             itemsIndexed(
                 items = state.queue,
                 key = { index, item -> "$index-${item.mediaId}" },

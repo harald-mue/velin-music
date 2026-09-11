@@ -193,11 +193,12 @@ private fun ConnectedApp(
         factory = libraryFactory,
     )
     val libraryState by libraryViewModel.state.collectAsState()
-    val playbackFactory = remember(credentials, apiClient) {
+    val playbackFactory = remember(credentials, apiClient, cacheRepository) {
         PlaybackViewModelFactory(
             applicationContext,
             credentials,
             apiClient,
+            cacheRepository,
             SavedQueueStore(File(applicationContext.filesDir, "saved-queue-${credentials.deviceId}.json")),
         )
     }

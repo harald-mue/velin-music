@@ -95,6 +95,10 @@ class LibraryCacheRepositoryTest {
             repository.artistsWindow(limit = 10, offset = 0).map(Artist::id),
         )
         assertEquals("track-1", repository.track("track-1")?.id)
+        assertEquals(
+            setOf("track-1", "track-3"),
+            repository.tracksById(listOf("track-3", "missing", "track-1", "track-3")).keys,
+        )
         val artistPage = database.libraryCacheDao().artistsPagingSource(repository.namespace).load(
             PagingSource.LoadParams.Refresh(key = null, loadSize = 20, placeholdersEnabled = false),
         )

@@ -117,6 +117,13 @@ class LibraryCacheRepository(
     suspend fun track(trackId: String): Track? =
         dao.activeTrack(namespace, trackId)?.toModel()
 
+    suspend fun tracksById(trackIds: List<String>): Map<String, Track> {
+        val ids = trackIds.distinct()
+        if (ids.isEmpty()) return emptyMap()
+        return dao.activeTracks(namespace, ids)
+            .associate { row -> row.id to row.toModel() }
+    }
+
     suspend fun artist(artistId: String): Artist? =
         dao.activeArtist(namespace, artistId)?.toModel()
 

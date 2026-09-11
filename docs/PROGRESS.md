@@ -1,6 +1,6 @@
 # Velin Development Progress
 
-Last updated: 2026-09-10
+Last updated: 2026-09-11
 
 ## Current status
 
@@ -126,9 +126,14 @@ Android:
 
 ## Recommended next task
 
-Deploy the new server image, then measure Room-backed scrolling, album/artist reopening, first-cover latency before and after server prewarming, transferred artwork bytes, and memory against the physical 2,096-track library. Repeat snapshot and startup measurements against the generated 100,000-track fixture. Do not infer unmeasured performance improvements.
+Measure cold saved-queue restoration with cache hits and misses on the physical phone, including unavailable tracks and a near-500-item queue. Then deploy the new server image and continue the documented Room/artwork performance measurements against the physical 2,096-track library and generated 100,000-track fixture.
 
 ## Recent work log
+
+### 2026-09-11
+
+- Split Queue playback and persistence controls into separate wrapping rows so Load is no longer hidden beyond a horizontal scroll area. The empty Queue intentionally leaves the remaining screen blank instead of repeating the visible Load action or showing an empty-state label.
+- Replaced saved-queue restoration's serial per-track API loop with one active-Room-snapshot lookup and at most eight concurrent requests for unique cache misses. Queue order, duplicate entries, unavailable rows, and fallback behavior are covered by repository/resolver tests. After installing the signed APK on the connected physical phone, the existing cached slot was rendered and playback started within the first screenshot taken 500 ms after tapping Load.
 
 ### 2026-09-10
 

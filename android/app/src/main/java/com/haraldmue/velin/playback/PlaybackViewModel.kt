@@ -19,6 +19,7 @@ import com.haraldmue.velin.data.SavedQueueEntry
 import com.haraldmue.velin.data.SavedQueueRecord
 import com.haraldmue.velin.data.SavedQueueStore
 import com.haraldmue.velin.data.Track
+import com.haraldmue.velin.data.cache.LibraryCacheRepository
 import com.haraldmue.velin.data.canSaveSavedQueue
 import com.haraldmue.velin.playback.PlaybackArtwork.playbackArtworkUrl
 import kotlinx.coroutines.CancellationException
@@ -78,6 +79,7 @@ class PlaybackViewModel(
     context: Context,
     credentials: DeviceCredentials,
     private val libraryGateway: LibraryGateway,
+    private val cacheRepository: LibraryCacheRepository,
     private val savedQueueStore: SavedQueueStore,
 ) : ViewModel() {
     private val applicationContext = context.applicationContext
@@ -415,10 +417,18 @@ class PlaybackViewModel(
                     return@launch
                 }
                 persistedIds = record.ids
+                val cachedTracks = withContext(Dispatchers.IO) {
+                    cacheRepository.tracksById(record.ids)
+                }
+                val resolvedTracks = resolveSavedQueueTracks(
+                    trackIds = record.ids,
+                    cachedTracks = cachedTracks,
+                    loadRemote = ::loadSavedTrack,
+                )
                 val overlay = ArrayList<PlaybackQueueItem>(record.items.size)
                 val playable = ArrayList<Track>()
-                for (entry in record.items) {
-                    val resolved = resolveSavedEntry(entry)
+                record.items.zip(resolvedTracks).forEach { (entry, track) ->
+                    val resolved = resolveSavedEntry(entry, track)
                     overlay += resolved.item
                     resolved.track?.let(playable::add)
                 }
@@ -683,38 +693,34 @@ class PlaybackViewModel(
         currentController.prepare()
     }
 
-    private suspend fun resolveSavedEntry(entry: SavedQueueEntry): ResolvedSavedItem {
-        return try {
-            val track = libraryGateway.loadTrack(entry.id).toTrack()
-            val mediaItem = mediaItemFactory.create(track)
-            ResolvedSavedItem(item = queueItemFor(track, mediaItem), track = track)
+    private suspend fun loadSavedTrack(trackId: String): Track? =
+        try {
+            libraryGateway.loadTrack(trackId).toTrack()
         } catch (error: ApiException) {
-            if (error.isNotFound) {
-                ResolvedSavedItem(
-                    item = PlaybackQueueItem(
-                        mediaId = entry.id,
-                        title = entry.title,
-                        artist = entry.artist,
-                        artworkUrl = null,
-                        available = false,
-                    ),
-                    track = null,
-                )
-            } else {
-                throw error
-            }
+            if (error.isNotFound) null else throw error
         } catch (_: IllegalArgumentException) {
-            ResolvedSavedItem(
-                item = PlaybackQueueItem(
-                    mediaId = entry.id,
-                    title = entry.title,
-                    artist = entry.artist,
-                    artworkUrl = null,
-                    available = false,
-                ),
-                track = null,
-            )
+            null
         }
+
+    private fun resolveSavedEntry(entry: SavedQueueEntry, track: Track?): ResolvedSavedItem {
+        if (track != null) {
+            try {
+                val mediaItem = mediaItemFactory.create(track)
+                return ResolvedSavedItem(item = queueItemFor(track, mediaItem), track = track)
+            } catch (_: IllegalArgumentException) {
+                // Keep malformed cached or remote entries visible but unavailable.
+            }
+        }
+        return ResolvedSavedItem(
+            item = PlaybackQueueItem(
+                mediaId = entry.id,
+                title = entry.title,
+                artist = entry.artist,
+                artworkUrl = null,
+                available = false,
+            ),
+            track = null,
+        )
     }
 
     private fun publishIdleOverlayState() {
@@ -776,11 +782,12 @@ class PlaybackViewModelFactory(
     private val context: Context,
     private val credentials: DeviceCredentials,
     private val libraryGateway: LibraryGateway,
+    private val cacheRepository: LibraryCacheRepository,
     private val savedQueueStore: SavedQueueStore,
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         require(modelClass.isAssignableFrom(PlaybackViewModel::class.java))
-        return PlaybackViewModel(context, credentials, libraryGateway, savedQueueStore) as T
+        return PlaybackViewModel(context, credentials, libraryGateway, cacheRepository, savedQueueStore) as T
     }
 }

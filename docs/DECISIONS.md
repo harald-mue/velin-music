@@ -450,11 +450,11 @@ The phone Queue tab needed a way to restore a recent playback list after clearin
 
 ### Decision
 
-Persist a single saved-queue JSON file in the app’s private files directory, keyed by opaque device ID. Store only opaque track IDs plus previously seen title/artist text. Load resolves each ID through the authenticated track API; HTTP 404 rows stay visible and greyed and cannot start playback. Save writes only currently available IDs and is enabled when that ID list differs from the last successful save. Clear empties the live Media3 queue without deleting the slot.
+Persist a single saved-queue JSON file in the app’s private files directory, keyed by opaque device ID. Store only opaque track IDs plus previously seen title/artist text. Load resolves IDs from the active Room snapshot in one bounded query, then resolves each unique cache miss through the authenticated track API with at most eight concurrent requests. HTTP 404 rows stay visible and greyed and cannot start playback. Save writes only currently available IDs and is enabled when that ID list differs from the last successful save. Clear empties the live Media3 queue without deleting the slot.
 
 ### Consequences
 
-This is not a playlist library: there is one slot per paired device on that phone, no names, and no server copy. Unavailable rows disappear from the slot on the next save. Tokens never enter the file.
+This is not a playlist library: there is one slot per paired device on that phone, no names, and no server copy. Queue order and duplicate IDs are preserved; duplicate cache misses trigger only one network request. An active snapshot avoids per-track network requests for its entries, while bounded fallback keeps uncached loads from serializing hundreds of round trips. Unavailable rows disappear from the slot on the next save. Tokens never enter the file.
 
 ## ADR-022 — Globally serialized scans with bounded live progress
 

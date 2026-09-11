@@ -192,6 +192,17 @@ interface LibraryCacheDao {
 
     @Query(
         """
+        SELECT track.* FROM cached_tracks AS track
+        INNER JOIN cache_state AS state
+          ON state.namespace = track.namespace
+         AND state.active_generation = track.generation
+        WHERE track.namespace = :namespace AND track.id IN (:trackIds)
+        """,
+    )
+    suspend fun activeTracks(namespace: String, trackIds: List<String>): List<CachedTrackEntity>
+
+    @Query(
+        """
         SELECT artist.* FROM cached_artists AS artist
         INNER JOIN cache_state AS state
           ON state.namespace = artist.namespace

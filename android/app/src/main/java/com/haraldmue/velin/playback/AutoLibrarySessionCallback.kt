@@ -1,14 +1,18 @@
 package com.haraldmue.velin.playback
 
+import android.os.Bundle
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSession.ConnectionResult
 import androidx.media3.session.MediaSession.MediaItemsWithStartPosition
+import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionError
+import androidx.media3.session.SessionResult
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -31,7 +35,13 @@ internal class AutoLibrarySessionCallback(
     private val catalog: () -> AutoLibraryCatalog?,
     private val resolver: () -> AutoPlaybackResolver?,
     private val artworkLoader: () -> AuthenticatedArtworkBitmapLoader?,
+    private val playbackResumption: suspend () -> LoadedPlaybackResume? = { null },
     private val beforeLibraryAccess: () -> Unit = {},
+    private val beforeQueueMutation: () -> Unit = {},
+    private val afterQueueMutation: () -> Unit = {},
+    private val beforePlaybackResumption: () -> Unit = {},
+    private val trustedControllerPackage: String? = null,
+    private val clearPlaybackResume: suspend () -> Unit = {},
 ) : MediaLibrarySession.Callback {
     override fun onConnect(
         session: MediaSession,
@@ -43,12 +53,47 @@ internal class AutoLibrarySessionCallback(
                 session.isAutoCompanionController(controller) ||
                 session.isMediaNotificationController(controller) ||
                 isAndroidAutoBrowserPackage(controller.packageName)
-        if (!isExternalMediaSurface) {
+        val isTrustedController = isTrustedPlaybackResumeController(
+            controller.packageName,
+            trustedControllerPackage,
+        )
+        if (!isExternalMediaSurface && !isTrustedController) {
             return super.onConnect(session, controller)
         }
+        val defaultCommands = if (isExternalMediaSurface) {
+            ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
+        } else {
+            ConnectionResult.DEFAULT_SESSION_COMMANDS
+        }
+        val commands = if (isTrustedController) {
+            defaultCommands.buildUpon().add(PlaybackResumeCommands.ClearCheckpoint).build()
+        } else {
+            defaultCommands
+        }
         return ConnectionResult.AcceptedResultBuilder(session, controller)
-            .setAvailableSessionCommands(ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS)
+            .setAvailableSessionCommands(commands)
             .build()
+    }
+
+    override fun onPlayerInteractionFinished(
+        session: MediaSession,
+        controllerInfo: MediaSession.ControllerInfo,
+        playerCommands: Player.Commands,
+    ) {
+        if (playerCommands.contains(Player.COMMAND_CHANGE_MEDIA_ITEMS)) {
+            afterQueueMutation()
+        }
+        val player = session.player
+        if (playerCommands.contains(Player.COMMAND_PLAY_PAUSE) &&
+            shouldPrepareForExternalPlay(
+                playbackState = player.playbackState,
+                mediaItemCount = player.mediaItemCount,
+                playWhenReady = player.playWhenReady,
+            )
+        ) {
+            player.prepare()
+        }
+        super.onPlayerInteractionFinished(session, controllerInfo, playerCommands)
     }
 
     override fun onSubscribe(
@@ -128,17 +173,49 @@ internal class AutoLibrarySessionCallback(
         }
     }
 
+    override fun onCustomCommand(
+        session: MediaSession,
+        controller: MediaSession.ControllerInfo,
+        customCommand: SessionCommand,
+        args: Bundle,
+    ): ListenableFuture<SessionResult> {
+        if (customCommand != PlaybackResumeCommands.ClearCheckpoint) {
+            return super.onCustomCommand(session, controller, customCommand, args)
+        }
+        if (!isTrustedPlaybackResumeController(controller.packageName, trustedControllerPackage)) {
+            return Futures.immediateFuture(SessionResult(SessionError.ERROR_PERMISSION_DENIED))
+        }
+        return valueFuture {
+            clearPlaybackResume()
+            SessionResult(SessionResult.RESULT_SUCCESS)
+        }
+    }
+
+    override fun onPlaybackResumption(
+        mediaSession: MediaSession,
+        controller: MediaSession.ControllerInfo,
+        isForPlayback: Boolean,
+    ): ListenableFuture<MediaItemsWithStartPosition> {
+        beforePlaybackResumption()
+        return valueFuture {
+            playbackResumptionResult(playbackResumption())
+        }
+    }
+
     override fun onAddMediaItems(
         mediaSession: MediaSession,
         controller: MediaSession.ControllerInfo,
         mediaItems: List<MediaItem>,
-    ): ListenableFuture<List<MediaItem>> = valueFuture {
-        withTimeout(LibraryPlayTimeoutMs) {
-            mediaItems.map { item ->
-                if (item.localConfiguration?.uri != null) {
-                    item
-                } else {
-                    requireResolver().playableTrack(item.mediaId)
+    ): ListenableFuture<List<MediaItem>> {
+        beforeQueueMutation()
+        return valueFuture {
+            withTimeout(LibraryPlayTimeoutMs) {
+                mediaItems.map { item ->
+                    if (item.localConfiguration?.uri != null) {
+                        item
+                    } else {
+                        requireResolver().playableTrack(item.mediaId)
+                    }
                 }
             }
         }
@@ -150,29 +227,32 @@ internal class AutoLibrarySessionCallback(
         mediaItems: List<MediaItem>,
         startIndex: Int,
         startPositionMs: Long,
-    ): ListenableFuture<MediaItemsWithStartPosition> = valueFuture {
-        withTimeout(LibraryPlayTimeoutMs) {
-            if (mediaItems.isEmpty()) {
-                return@withTimeout MediaItemsWithStartPosition(emptyList(), C.INDEX_UNSET, startPositionMs)
-            }
-            if (mediaItems.all { it.localConfiguration?.uri != null }) {
-                val enriched = embedCurrentArtwork(mediaItems, startIndex)
-                return@withTimeout MediaItemsWithStartPosition(enriched, startIndex, startPositionMs)
-            }
-            if (mediaItems.size == 1) {
-                val queue = requireResolver().queueFor(mediaItems.single().mediaId)
-                val enriched = embedCurrentArtwork(queue.items, queue.startIndex)
-                return@withTimeout MediaItemsWithStartPosition(enriched, queue.startIndex, startPositionMs)
-            }
-            val resolved = mediaItems.map { item ->
-                if (item.localConfiguration?.uri != null) {
-                    item
-                } else {
-                    requireResolver().playableTrack(item.mediaId)
+    ): ListenableFuture<MediaItemsWithStartPosition> {
+        beforeQueueMutation()
+        return valueFuture {
+            withTimeout(LibraryPlayTimeoutMs) {
+                if (mediaItems.isEmpty()) {
+                    return@withTimeout MediaItemsWithStartPosition(emptyList(), C.INDEX_UNSET, startPositionMs)
                 }
+                if (mediaItems.all { it.localConfiguration?.uri != null }) {
+                    val enriched = embedCurrentArtwork(mediaItems, startIndex)
+                    return@withTimeout MediaItemsWithStartPosition(enriched, startIndex, startPositionMs)
+                }
+                if (mediaItems.size == 1) {
+                    val queue = requireResolver().queueFor(mediaItems.single().mediaId)
+                    val enriched = embedCurrentArtwork(queue.items, queue.startIndex)
+                    return@withTimeout MediaItemsWithStartPosition(enriched, queue.startIndex, startPositionMs)
+                }
+                val resolved = mediaItems.map { item ->
+                    if (item.localConfiguration?.uri != null) {
+                        item
+                    } else {
+                        requireResolver().playableTrack(item.mediaId)
+                    }
+                }
+                val enriched = embedCurrentArtwork(resolved, startIndex)
+                MediaItemsWithStartPosition(enriched, startIndex, startPositionMs)
             }
-            val enriched = embedCurrentArtwork(resolved, startIndex)
-            MediaItemsWithStartPosition(enriched, startIndex, startPositionMs)
         }
     }
 
@@ -254,24 +334,8 @@ internal class AutoLibrarySessionCallback(
         return future
     }
 
-    private fun <T> valueFuture(block: suspend () -> T): ListenableFuture<T> {
-        val future = SettableFuture.create<T>()
-        val job = scope.launch {
-            try {
-                beforeLibraryAccess()
-                future.set(block())
-            } catch (error: TimeoutCancellationException) {
-                future.setException(error)
-            } catch (error: CancellationException) {
-                future.cancel(false)
-                throw error
-            } catch (error: Throwable) {
-                future.setException(error)
-            }
-        }
-        cancelOnFutureCancel(future, job)
-        return future
-    }
+    private fun <T> valueFuture(block: suspend () -> T): ListenableFuture<T> =
+        cancellableValueFuture(scope, beforeLibraryAccess, block)
 
     private fun cancelOnFutureCancel(future: ListenableFuture<*>, job: Job) {
         future.addListener(
@@ -284,6 +348,57 @@ internal class AutoLibrarySessionCallback(
         )
     }
 }
+
+internal fun isTrustedPlaybackResumeController(
+    controllerPackage: String,
+    trustedControllerPackage: String?,
+): Boolean = trustedControllerPackage != null && controllerPackage == trustedControllerPackage
+
+internal object PlaybackResumeCommands {
+    val ClearCheckpoint = SessionCommand(
+        "com.haraldmue.velin.command.CLEAR_PLAYBACK_RESUME",
+        Bundle.EMPTY,
+    )
+}
+
+internal fun playbackResumptionResult(loaded: LoadedPlaybackResume?): MediaItemsWithStartPosition {
+    loaded ?: throw UnsupportedOperationException("No playback state is available for resumption.")
+    return MediaItemsWithStartPosition(
+        loaded.mediaItems,
+        loaded.record.currentIndex,
+        loaded.record.positionMs,
+    )
+}
+
+internal fun <T> cancellableValueFuture(
+    scope: CoroutineScope,
+    beforeAccess: () -> Unit,
+    block: suspend () -> T,
+): ListenableFuture<T> {
+    val future = SettableFuture.create<T>()
+    val job = scope.launch {
+        try {
+            beforeAccess()
+            future.set(block())
+        } catch (error: CancellationException) {
+            future.cancel(false)
+            throw error
+        } catch (error: Throwable) {
+            future.setException(error)
+        }
+    }
+    future.addListener(
+        { if (future.isCancelled) job.cancel() },
+        { it.run() },
+    )
+    return future
+}
+
+internal fun shouldPrepareForExternalPlay(
+    playbackState: Int,
+    mediaItemCount: Int,
+    playWhenReady: Boolean,
+): Boolean = playWhenReady && shouldPrepareBeforePlay(playbackState, mediaItemCount)
 
 /**
  * The platform MediaBrowser compatibility adapter blocks the main thread in onGetRoot until

@@ -95,7 +95,9 @@ import com.haraldmue.velin.ui.pairing.PairingScreen
 import com.haraldmue.velin.ui.pairing.PairingUiState
 import com.haraldmue.velin.ui.pairing.PairingViewModel
 import com.haraldmue.velin.ui.pairing.PairingViewModelFactory
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private data class PlaybackRequest(val tracks: List<Track>, val startIndex: Int)
 
@@ -243,11 +245,14 @@ private fun ConnectedApp(
         libraryViewModel.closeTrack()
         libraryViewModel.cancelForCredentialChange()
         playbackViewModel.stopAndClear()
-        playbackViewModel.releaseForCredentialChange()
         coroutineScope.launch {
             try {
-                cacheRepository.clear()
+                withContext(NonCancellable) {
+                    playbackViewModel.deleteAutomaticResumeCheckpoint()
+                    cacheRepository.clear()
+                }
             } finally {
+                playbackViewModel.releaseForCredentialChange()
                 onDisconnect()
             }
         }

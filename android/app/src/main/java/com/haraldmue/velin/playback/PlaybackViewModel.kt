@@ -2,6 +2,7 @@ package com.haraldmue.velin.playback
 
 import android.content.ComponentName
 import android.content.Context
+import android.os.Bundle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -10,8 +11,10 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
+import androidx.media3.session.SessionResult
 import androidx.media3.session.SessionToken
 import androidx.core.content.ContextCompat
+import com.google.common.util.concurrent.ListenableFuture
 import com.haraldmue.velin.data.ApiException
 import com.haraldmue.velin.data.DeviceCredentials
 import com.haraldmue.velin.data.LibraryGateway
@@ -19,6 +22,7 @@ import com.haraldmue.velin.data.SavedQueueEntry
 import com.haraldmue.velin.data.SavedQueueRecord
 import com.haraldmue.velin.data.SavedQueueStore
 import com.haraldmue.velin.data.Track
+import com.haraldmue.velin.data.cache.CacheNamespace
 import com.haraldmue.velin.data.cache.LibraryCacheRepository
 import com.haraldmue.velin.data.canSaveSavedQueue
 import com.haraldmue.velin.playback.PlaybackArtwork.playbackArtworkUrl
@@ -28,7 +32,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 data class PlaybackQueueItem(
     val mediaId: String,
@@ -84,6 +92,10 @@ class PlaybackViewModel(
 ) : ViewModel() {
     private val applicationContext = context.applicationContext
     private val mediaItemFactory = PlaybackMediaItemFactory(credentials)
+    private val playbackResumeStore = PlaybackResumeStore(
+        playbackResumeFile(applicationContext.filesDir, CacheNamespace.from(credentials)),
+        CacheNamespace.from(credentials),
+    )
     private val mutableState = androidx.compose.runtime.mutableStateOf(PlaybackUiState())
     val state: androidx.compose.runtime.State<PlaybackUiState> = mutableState
     private var displayQueue: MutableList<PlaybackQueueItem>? = null
@@ -220,6 +232,13 @@ class PlaybackViewModel(
             } else {
                 if (currentController.playbackState == Player.STATE_ENDED) {
                     currentController.seekTo(0)
+                } else if (
+                    shouldPrepareBeforePlay(
+                        playbackState = currentController.playbackState,
+                        mediaItemCount = currentController.mediaItemCount,
+                    )
+                ) {
+                    currentController.prepare()
                 }
                 currentController.play()
             }
@@ -366,6 +385,32 @@ class PlaybackViewModel(
 
     fun clearQueue() {
         stopAndClear()
+        viewModelScope.launch { deleteAutomaticResumeCheckpoint() }
+    }
+
+    suspend fun deleteAutomaticResumeCheckpoint(): Boolean {
+        val clearedByService = controller?.let { currentController ->
+            if (!currentController.isSessionCommandAvailable(PlaybackResumeCommands.ClearCheckpoint)) {
+                return@let false
+            }
+            try {
+                val result = withTimeout(ClearPlaybackResumeTimeoutMs) {
+                    currentController.sendCustomCommand(
+                        PlaybackResumeCommands.ClearCheckpoint,
+                        Bundle.EMPTY,
+                    ).awaitValue()
+                }
+                result.resultCode == SessionResult.RESULT_SUCCESS
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                false
+            }
+        } ?: false
+        if (clearedByService) return true
+        return withContext(Dispatchers.IO) {
+            runCatching(playbackResumeStore::delete).isSuccess
+        }
     }
 
     fun releaseForCredentialChange() {
@@ -746,10 +791,27 @@ class PlaybackViewModel(
     private data class PendingQueue(val items: List<MediaItem>, val startIndex: Int)
 }
 
+private suspend fun <T> ListenableFuture<T>.awaitValue(): T =
+    suspendCancellableCoroutine { continuation ->
+        addListener(
+            {
+                runCatching(::get)
+                    .onSuccess(continuation::resume)
+                    .onFailure(continuation::resumeWithException)
+            },
+            { it.run() },
+        )
+        continuation.invokeOnCancellation { cancel(true) }
+    }
+
 internal const val PlaybackProgressPollMs = 500L
+internal const val ClearPlaybackResumeTimeoutMs = 3_000L
 
 internal fun shouldPollPlaybackProgress(isPlaying: Boolean, isBuffering: Boolean): Boolean =
     isPlaying || isBuffering
+
+internal fun shouldPrepareBeforePlay(playbackState: Int, mediaItemCount: Int): Boolean =
+    playbackState == Player.STATE_IDLE && mediaItemCount > 0
 
 internal fun isValidPlaybackQueue(queueSize: Int, startIndex: Int): Boolean =
     queueSize in 1..500 && startIndex in 0 until queueSize

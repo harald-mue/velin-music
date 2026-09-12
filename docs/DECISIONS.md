@@ -436,7 +436,7 @@ Migrate the existing `PlaybackService` to Media3 `MediaLibraryService` with a `M
 
 ### Consequences
 
-The playback service is exported. Tokens must never appear in media IDs, metadata, or URLs; authorization remains an in-memory OkHttp/Media3 header. Auto home shelves read the active Room snapshot and do not invent Recently Played. Opening a cached album or artist in Auto reads Room tracks so browse does not depend on a live album-tracks request. Auto shows Recent and Discover as separate tabs without de-duplicating across them. Browse album grids expose `content://com.haraldmue.velin.artwork/covers/{id}/{size}` because Android Auto fetches `iconUri` itself and cannot authenticate HTTP cover URLs; the provider requires pairing, serves Coil cache first, and writes misses into that cache. Because Android Auto keeps the service bound, pairing/`stopService` cannot recreate it; browse callbacks reload Keystore credentials and `notifyChildrenChanged` on root, Recent, Discover, Albums, and Artists after snapshot activation. Playback resumption after process death remains unimplemented. Android Automotive OS is still out of scope.
+The playback service is exported. Tokens must never appear in media IDs, metadata, or URLs; authorization remains an in-memory OkHttp/Media3 header. Auto home shelves read the active Room snapshot and do not invent Recently Played. Opening a cached album or artist in Auto reads Room tracks so browse does not depend on a live album-tracks request. Auto shows Recent and Discover as separate tabs without de-duplicating across them. Browse album grids expose `content://com.haraldmue.velin.artwork/covers/{id}/{size}` because Android Auto fetches `iconUri` itself and cannot authenticate HTTP cover URLs; the provider requires pairing, serves Coil cache first, and writes misses into that cache. Because Android Auto keeps the service bound, pairing/`stopService` cannot recreate it; browse callbacks reload Keystore credentials and `notifyChildrenChanged` on root, Recent, Discover, Albums, and Artists after snapshot activation. Paused playback resumption after process death is implemented in ADR-034. Android Automotive OS is still out of scope.
 
 ## ADR-021 — One device-local saved playback queue
 
@@ -675,4 +675,22 @@ Add `make server-package`, `make android-package`, and `make package`. The Andro
 ### Consequences
 
 Installable phone packages require the operator-held PKCS12 key at `~/Keystore/velin-release.jks`. Losing that key means updates cannot replace an existing install. Host `dist/velin-server` matches the build machine OS/arch, not a NAS of a different architecture.
+
+## ADR-034 — Service-owned, paused playback resumption
+
+Status: Accepted; emulator-validated, signed physical-device matrix remaining
+
+Date: 2026-09-11
+
+### Context
+
+The manual saved-queue slot restores a user-selected list, but it does not preserve the authoritative live Media3 item, position, shuffle, or repeat state after the playback-service process is lost. Persisting Android `MediaItem` objects or stream URLs would create an unstable format and could retain stale connection data.
+
+### Decision
+
+Have `PlaybackService`, as the ExoPlayer owner, checkpoint a separate bounded and versioned JSON record. Scope it by the credential-derived cache namespace and persist only opaque IDs plus safe display/format/cover metadata, current index/position, shuffle, and repeat; never persist tokens, authorization, arbitrary URLs, or artwork bytes. Capture player state on the main thread and serialize through one conflating IO writer. On startup, read only the current namespace on IO, rebuild media items with current credentials through `PlaybackMediaItemFactory`, and apply them only if no controller has supplied another queue. Restored playback is always idle and paused; it never autoplays or opens a stream merely because a client connected.
+
+### Consequences
+
+The manual Save/Load slot remains independent. Queue changes and five-second playing-position checkpoints rewrite a bounded record, while Clear and disconnect must delete it without a stale write resurrecting it. Phone Play prepares an idle restored queue. Media3 `onPlaybackResumption` exposes the same validated local state to notification, Bluetooth, and Android Auto controllers through cancellable IO work; an external Play command prepares an idle non-empty queue only when play intent is set. Clear and disconnect use a custom command exposed only to Velin's own controller to order deletion through the service writer before credential removal; a credential-scoped direct deletion is the disconnected-service fallback. Changing credential namespaces retires and deletes the old writer/state before establishing a new restore scope, while token rotation inside one namespace retains it. Paired-emulator force-stop/reboot restoration, reachable-server playing restore with 0 ms drift, auto-advance, media-key Play, and Android Auto/DHU resumption are measured in [`PLAYBACK_RESUMPTION_PLAN.md`](PLAYBACK_RESUMPTION_PLAN.md); disconnect/re-pair and signed physical-device validation remain.
 

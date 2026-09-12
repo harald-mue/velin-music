@@ -1,6 +1,7 @@
 package com.haraldmue.velin.playback
 
 import android.net.Uri
+import android.os.Bundle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
@@ -23,10 +24,15 @@ class PlaybackMediaItemFactory(
             .addPathSegment(track.id)
             .addPathSegment("stream")
             .build()
+        val metadataExtras = Bundle().apply {
+            putString(PlaybackResumeMetadata.ExtraFormat, track.format.lowercase())
+            track.coverId?.let { putString(PlaybackResumeMetadata.ExtraCoverId, it) }
+        }
         val metadataBuilder = MediaMetadata.Builder()
             .setTitle(track.title)
             .setArtist(track.artistName)
             .setAlbumTitle(track.albumTitle)
+            .setExtras(metadataExtras)
         track.coverId?.let { coverId ->
             metadataBuilder.setArtworkUri(Uri.parse(artworkPolicy.urlFor(coverId, size = 512)))
         }
